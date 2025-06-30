@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"net/url"
 	"regexp"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -23,9 +24,26 @@ type requestData struct {
 	Names []string `json:"names"`
 }
 
+type CreateGameRequest struct {
+	Title     string            `json:"title"`
+	Preambula string            `json:"preambula"`
+	Image     string            `json:"image"`
+	Developer string            `json:"developer"`
+	Publisher string            `json:"publisher"`
+	Year      string            `json:"year"`
+	Genre     string            `json:"genre"`
+	Status    models.GameStatus `json:"status"`
+}
+
+type UpdateGameRequest struct {
+	ID        int64      `json:"id"`
+	CreatedAt *time.Time `json:"created_at"`
+	CreateGameRequest
+}
+
 type MultiGameResponse struct {
-	Success []*models.Games `json:"success"`
-	Errors  []string        `json:"errors"`
+	Success []*models.Game `json:"success"`
+	Errors  []string       `json:"errors"`
 }
 
 type GameController struct {
@@ -41,15 +59,140 @@ func NewGameController(s *services.GameService, log *slog.Logger) *GameControlle
 }
 
 func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
-	// TODO
+	const op = "controllers.games.GetAll"
+	res, err := c.service.GetAll()
+	if err != nil {
+		c.log.Error(
+			ErrGetGames.Error(),
+			slog.String("operation", op),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
-	// TODO
+	const op = "controllers.games.GetByID"
+	id := r.URL.Query().Get("id")
+	id_s, err := strconv.Atoi(id)
+	if err != nil {
+		c.log.Error(
+			ErrGetGame.Error(),
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusBadRequest)
+		return
+	}
+	res, err := c.service.GetByID(int64(id_s))
+	if err != nil {
+		c.log.Error(
+			ErrGetGame.Error(),
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		c.log.Error(ErrGetGame.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
-	// TODO
+	const op = "controllers.games.Create"
+	var request CreateGameRequest
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrCreate.Error(), http.StatusBadRequest)
+	}
+
+	timeNow := time.Now()
+
+	game := &models.Game{
+		Title:     request.Title,
+		Preambula: request.Preambula,
+		Image:     request.Image,
+		Developer: request.Developer,
+		Publisher: request.Publisher,
+		Year:      request.Year,
+		Genre:     request.Genre,
+		Status:    request.Status,
+		CreatedAt: &timeNow,
+		UpdatedAt: &timeNow,
+	}
+
+	res, err := c.service.Create(game)
+	if err != nil {
+		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrCreate.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		c.log.Error(ErrCreate.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrCreate.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.games.Update"
+
+	var request UpdateGameRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		c.log.Error(ErrUpdate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdate.Error(), http.StatusBadRequest)
+	}
+
+	timeNow := time.Now()
+
+	game := &models.Game{
+		Title:     request.Title,
+		Preambula: request.Preambula,
+		Image:     request.Image,
+		Developer: request.Developer,
+		Publisher: request.Publisher,
+		Year:      request.Year,
+		Genre:     request.Genre,
+		Status:    request.Status,
+		CreatedAt: request.CreatedAt,
+		UpdatedAt: &timeNow,
+	}
+
+	res, err := c.service.Update(game)
+	if err != nil {
+		c.log.Error(ErrUpdate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdate.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(res); err != nil {
+		c.log.Error(ErrUpdate.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdate.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Request) {
@@ -79,7 +222,7 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 		sem         = make(chan struct{}, maxWorkers)
 		wg          sync.WaitGroup
 		errChan     = make(chan error, len(request.Names))
-		resultsChan = make(chan *models.Games, len(request.Names))
+		resultsChan = make(chan *models.Game, len(request.Names))
 	)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
@@ -110,7 +253,7 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 	}()
 
 	var errors []string
-	var createdGames []*models.Games
+	var createdGames []*models.Game
 
 	for err := range errChan {
 		errors = append(errors, err.Error())
@@ -157,7 +300,7 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 		slog.String("time", timeEnd.Sub(timeStart).String()))
 }
 
-func (c *GameController) createSingleGame(ctx context.Context, name string) (*models.Games, error) {
+func (c *GameController) createSingleGame(ctx context.Context, name string) (*models.Game, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -183,7 +326,8 @@ func (c *GameController) createSingleGame(ctx context.Context, name string) (*mo
 		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
 	}
 
-	game := &models.Games{
+	timeNow := time.Now()
+	game := &models.Game{
 		Title:     resultMap["title"],
 		Preambula: resultMap["preambula"],
 		Image:     resultMap["image"],
@@ -191,9 +335,9 @@ func (c *GameController) createSingleGame(ctx context.Context, name string) (*mo
 		Publisher: resultMap["publisher"],
 		Year:      resultMap["year"],
 		Genre:     resultMap["genre"],
-		Status:    "planned",
-		CreatedAt: time.Now(),
-		UpdatedAt: time.Now(),
+		Status:    models.StatusPlanned,
+		CreatedAt: &timeNow,
+		UpdatedAt: &timeNow,
 	}
 
 	if _, err := c.service.Create(game); err != nil {

@@ -31,7 +31,6 @@ type HTTPServer struct {
 }
 
 func MustLoad() *Config {
-
 	configPath := flag.String("config", "", "path to config yaml file")
 	flag.Parse()
 	if *configPath == "" {
@@ -53,7 +52,7 @@ func MustLoad() *Config {
 
 func (cfg *Database) GetDSN() string {
 	dsn := fmt.Sprintf(
-		"%s:%s@tcp(%s:%d)/%s",
+		"%s:%s@tcp(%s:%d)/%s?parseTime=true",
 		cfg.UsernameDB,
 		cfg.Password,
 		cfg.Host,

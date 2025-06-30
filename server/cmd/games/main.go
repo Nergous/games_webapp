@@ -2,12 +2,13 @@ package main
 
 import (
 	"fmt"
-	"games_webapp/internal/config"
-	"games_webapp/internal/routes"
-	"games_webapp/internal/storage/mariadb"
 	"log/slog"
 	"net/http"
 	"os"
+
+	"games_webapp/internal/config"
+	"games_webapp/internal/routes"
+	"games_webapp/internal/storage/mariadb"
 )
 
 const (
@@ -25,7 +26,6 @@ func main() {
 	log.Info("starting server", slog.String("env", cfg.Env))
 
 	storage, err := mariadb.New(cfg.Database)
-
 	if err != nil {
 		log.Error("failed to create database", slog.String("error", err.Error()))
 		panic("db-err")
@@ -33,9 +33,9 @@ func main() {
 
 	defer storage.Close()
 
-	err = storage.CreateGamesTable()
+	err = storage.Migrate()
 	if err != nil {
-		log.Error("failed to create table", slog.String("error", err.Error()))
+		log.Error("migration", slog.String("error", err.Error()))
 		panic("table-err")
 	}
 
@@ -59,7 +59,6 @@ func main() {
 		log.Error("server failed", slog.String("error", err.Error()))
 		os.Exit(1)
 	}
-
 }
 
 func setupLogger(env string) *slog.Logger {

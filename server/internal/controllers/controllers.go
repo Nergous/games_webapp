@@ -7,6 +7,7 @@ var (
 	ErrBadRequest    = errors.New("bad request")
 	ErrTooManyGames  = errors.New("too many games")
 	ErrGetGames      = errors.New("failed to get games")
+	ErrGetGame       = errors.New("failed to get game by id")
 	ErrGameWiki      = errors.New("failed to get game wiki")
 	ErrParsing       = errors.New("failed to parse document")
 	ErrPartialCreate = errors.New("partial failure in create")
