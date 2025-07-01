@@ -2,7 +2,9 @@ package controllers
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"log/slog"
@@ -16,6 +18,7 @@ import (
 
 	"games_webapp/internal/models"
 	"games_webapp/internal/services"
+	"games_webapp/internal/storage/uploads"
 
 	"github.com/PuerkitoBio/goquery"
 )
@@ -33,6 +36,8 @@ type CreateGameRequest struct {
 	Year      string            `json:"year"`
 	Genre     string            `json:"genre"`
 	Status    models.GameStatus `json:"status"`
+	URL       string            `json:"url"`
+	Priority  int               `json:"priority"`
 }
 
 type UpdateGameRequest struct {
@@ -47,14 +52,16 @@ type MultiGameResponse struct {
 }
 
 type GameController struct {
-	service services.GameService
-	log     slog.Logger
+	service services.GameServicer
+	log     *slog.Logger
+	uploads uploads.IUploads
 }
 
-func NewGameController(s *services.GameService, log *slog.Logger) *GameController {
+func NewGameController(s services.GameServicer, log *slog.Logger, u uploads.IUploads) *GameController {
 	return &GameController{
-		service: *s,
-		log:     *log,
+		service: s,
+		log:     log,
+		uploads: u,
 	}
 }
 
@@ -81,15 +88,22 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetByID"
-	id := r.URL.Query().Get("id")
-	id_s, err := strconv.Atoi(id)
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, ErrInvalidURL.Error(), http.StatusBadRequest)
+		return
+	}
+	id := parts[3]
+
+	fmt.Println(id)
+	id_s, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		c.log.Error(
-			ErrGetGame.Error(),
+			ErrDelete.Error(),
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrGetGame.Error(), http.StatusBadRequest)
+		http.Error(w, ErrDelete.Error(), http.StatusBadRequest)
 		return
 	}
 	res, err := c.service.GetByID(int64(id_s))
@@ -114,13 +128,21 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.Create"
+
 	var request CreateGameRequest
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrCreate.Error(), http.StatusBadRequest)
+		return
 	}
 
 	timeNow := time.Now()
+
+	if request.Priority > 10 {
+		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", "priority > 10"))
+		http.Error(w, ErrCreate.Error(), http.StatusBadRequest)
+		return
+	}
 
 	game := &models.Game{
 		Title:     request.Title,
@@ -131,6 +153,8 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 		Year:      request.Year,
 		Genre:     request.Genre,
 		Status:    request.Status,
+		URL:       request.URL,
+		Priority:  request.Priority,
 		CreatedAt: &timeNow,
 		UpdatedAt: &timeNow,
 	}
@@ -172,6 +196,8 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		Year:      request.Year,
 		Genre:     request.Genre,
 		Status:    request.Status,
+		URL:       request.URL,
+		Priority:  request.Priority,
 		CreatedAt: request.CreatedAt,
 		UpdatedAt: &timeNow,
 	}
@@ -193,11 +219,40 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.games.Delete"
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, ErrInvalidURL.Error(), http.StatusBadRequest)
+		return
+	}
+	id := parts[3]
+
+	fmt.Println(id)
+	id_s, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		c.log.Error(
+			ErrDelete.Error(),
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrDelete.Error(), http.StatusBadRequest)
+		return
+	}
+	err = c.service.Delete(int64(id_s))
+	if err != nil {
+		c.log.Error(
+			ErrDelete.Error(),
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrDelete.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Request) {
 	var request requestData
-	timeStart := time.Now()
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		c.log.Error(ErrBadRequest.Error(), slog.String("error", err.Error()))
@@ -293,11 +348,6 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 		c.log.Error(ErrEncoding.Error(), slog.String("error", err.Error()))
 		http.Error(w, ErrEncoding.Error(), http.StatusInternalServerError)
 	}
-	timeEnd := time.Now()
-	c.log.Info(
-		"IN TIME",
-		slog.Int("count", len(createdGames)),
-		slog.String("time", timeEnd.Sub(timeStart).String()))
 }
 
 func (c *GameController) createSingleGame(ctx context.Context, name string) (*models.Game, error) {
@@ -316,6 +366,10 @@ func (c *GameController) createSingleGame(ctx context.Context, name string) (*mo
 		return nil, fmt.Errorf(ErrGameWiki.Error()+" %s : %s", name, err)
 	}
 
+	if err := c.checkURLInDB(url); err != nil {
+		return nil, fmt.Errorf("game already exists: %s", url)
+	}
+
 	resultMap, err := c.parseGameWiki(url)
 	if err != nil {
 		c.log.Error(
@@ -326,21 +380,43 @@ func (c *GameController) createSingleGame(ctx context.Context, name string) (*mo
 		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
 	}
 
+	imageFilename, err := c.downloadAndSaveImage(resultMap["image"])
+	if err != nil {
+		c.log.Error(
+			"failed to save image",
+			slog.String("error", err.Error()),
+			slog.String("game", name),
+			slog.String("url", resultMap["image"]),
+		)
+		imageFilename = ""
+	}
+
 	timeNow := time.Now()
 	game := &models.Game{
 		Title:     resultMap["title"],
 		Preambula: resultMap["preambula"],
-		Image:     resultMap["image"],
+		Image:     imageFilename,
 		Developer: resultMap["developer"],
 		Publisher: resultMap["publisher"],
 		Year:      resultMap["year"],
 		Genre:     resultMap["genre"],
 		Status:    models.StatusPlanned,
+		URL:       url,
+		Priority:  0,
 		CreatedAt: &timeNow,
 		UpdatedAt: &timeNow,
 	}
 
 	if _, err := c.service.Create(game); err != nil {
+		if imageFilename != "" {
+			if delErr := c.uploads.DeleteImage(imageFilename); delErr != nil {
+				c.log.Error(
+					"failed to delete image",
+					slog.String("error", delErr.Error()),
+					slog.String("filename", imageFilename),
+				)
+			}
+		}
 		c.log.Error(
 			ErrCreate.Error(),
 			slog.String("error", err.Error()),
@@ -512,4 +588,62 @@ func (c *GameController) parseGameWiki(url string) (map[string]string, error) {
 	}
 
 	return resultMap, nil
+}
+
+func (c *GameController) checkURLInDB(url string) error {
+	if err := c.service.GetGameByURL(url); err != nil {
+		return err
+	}
+	return nil
+}
+
+func (c *GameController) downloadAndSaveImage(url string) (string, error) {
+	if url == "" {
+		return "", errors.New("image url is empty")
+	}
+
+	client := &http.Client{Timeout: 30 * time.Second}
+	resp, err := client.Get(url)
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("failed to download image: %s", resp.Status)
+	}
+
+	contentType := resp.Header.Get("Content-Type")
+	if !strings.HasPrefix(contentType, "image/") {
+		return "", fmt.Errorf("unexpected content type: %s", contentType)
+	}
+
+	imageData, err := io.ReadAll(resp.Body)
+	if err != nil {
+		return "", err
+	}
+	filename := generateImageFilename(url, contentType)
+
+	if err := c.uploads.SaveImage(imageData, filename); err != nil {
+		return "", err
+	}
+
+	return filename, nil
+}
+
+func generateImageFilename(url, contentType string) string {
+	// Извлекаем расширение из Content-Type
+	ext := ".jpg"
+	switch {
+	case strings.Contains(contentType, "png"):
+		ext = ".png"
+	case strings.Contains(contentType, "gif"):
+		ext = ".gif"
+	case strings.Contains(contentType, "webp"):
+		ext = ".webp"
+	}
+
+	// Создаем хэш от URL для уникального имени
+	hash := sha256.Sum256([]byte(url))
+	return fmt.Sprintf("%x%s", hash[:8], ext)
 }

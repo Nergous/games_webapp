@@ -1,14 +1,19 @@
 package main
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	"games_webapp/internal/config"
 	"games_webapp/internal/routes"
 	"games_webapp/internal/storage/mariadb"
+	"games_webapp/internal/storage/uploads"
 )
 
 const (
@@ -31,7 +36,19 @@ func main() {
 		panic("db-err")
 	}
 
-	defer storage.Close()
+	uploadsStorage, err := uploads.NewUploads(cfg.UploadsPath)
+	if err != nil {
+		log.Error("failed to create uploads storage", slog.String("error", err.Error()))
+		panic("uploads-err")
+	}
+
+	log.Info("storage init")
+
+	defer func() {
+		if err := storage.Close(); err != nil {
+			log.Error("failed to close database", slog.String("error", err.Error()))
+		}
+	}()
 
 	err = storage.Migrate()
 	if err != nil {
@@ -41,7 +58,7 @@ func main() {
 
 	log.Info("database init")
 
-	r := routes.SetupRouter(log, *storage)
+	r := routes.SetupRouter(log, storage, uploadsStorage)
 
 	log.Info("routes init")
 
@@ -53,12 +70,37 @@ func main() {
 		IdleTimeout:  cfg.IdleTimeout,
 	}
 
-	log.Info("starting server", slog.String("address", cfg.Address))
+	serverErrors := make(chan error, 1)
 
-	if err := server.ListenAndServe(); err != nil {
-		log.Error("server failed", slog.String("error", err.Error()))
+	shutdown := make(chan os.Signal, 1)
+	signal.Notify(shutdown, os.Interrupt, syscall.SIGTERM)
+
+	go func() {
+		log.Info("starting server", slog.String("address", cfg.Address))
+		serverErrors <- server.ListenAndServe()
+	}()
+
+	select {
+	case err := <-serverErrors:
+		log.Error("server error", slog.String("error", err.Error()))
 		os.Exit(1)
+
+	case sig := <-shutdown:
+
+		log.Info("shutting down", slog.String("signal", sig.String()))
+		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+		defer cancel()
+
+		if err := server.Shutdown(ctx); err != nil {
+			log.Error("graceful shutdown error", slog.String("error", err.Error()))
+			if err := server.Close(); err != nil {
+				log.Error("force shutdown error", slog.String("error", err.Error()))
+			}
+		}
+		close(shutdown)
+		close(serverErrors)
 	}
+	log.Info("server stopped")
 }
 
 func setupLogger(env string) *slog.Logger {

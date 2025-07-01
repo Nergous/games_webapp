@@ -11,9 +11,10 @@ import (
 )
 
 type Config struct {
-	Env        string `yaml:"env" env:"ENV" env-required:"true"`
-	Database   `yaml:"database"`
-	HTTPServer `yaml:"http_server"`
+	Env         string `yaml:"env" env:"ENV" env-required:"true"`
+	UploadsPath string `yaml:"uploads_path" env:"UPLOADS_PATH" env-required:"true"`
+	Database    `yaml:"database"`
+	HTTPServer  `yaml:"http_server"`
 }
 
 type Database struct {

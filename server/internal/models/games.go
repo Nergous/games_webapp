@@ -22,6 +22,8 @@ type Game struct {
 	Year      string     `json:"year"`
 	Genre     string     `json:"genre"`
 	Status    GameStatus `json:"status" gorm:"type:varchar(20);default:'planned'"`
+	URL       string     `json:"url"`
+	Priority  int        `json:"priority"`
 	CreatedAt *time.Time `json:"created_at" gorm:"type:timestamp"`
 	UpdatedAt *time.Time `json:"updated_at" gorm:"type:timestamp"`
 }

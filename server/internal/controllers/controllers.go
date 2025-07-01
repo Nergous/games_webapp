@@ -16,4 +16,5 @@ var (
 	ErrUpdate        = errors.New("failed to update")
 	ErrDelete        = errors.New("failed to delete")
 	ErrEncoding      = errors.New("failed to encode")
+	ErrInvalidURL    = errors.New("invalid url")
 )
