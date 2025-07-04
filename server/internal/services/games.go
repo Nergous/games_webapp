@@ -1,21 +1,15 @@
 package services
 
 import (
+	"errors"
 	"fmt"
 	"log/slog"
 
 	"games_webapp/internal/models"
 	"games_webapp/internal/storage/mariadb"
-)
 
-type GameServicer interface {
-	GetAll() ([]models.Game, error)
-	GetByID(id int64) (*models.Game, error)
-	Create(game *models.Game) (*models.Game, error)
-	Update(game *models.Game) (*models.Game, error)
-	Delete(id int64) error
-	GetGameByURL(url string) error
-}
+	"gorm.io/gorm"
+)
 
 type GameService struct {
 	storage *mariadb.Storage
@@ -41,6 +35,35 @@ func (s *GameService) GetAll() ([]models.Game, error) {
 	return results, nil
 }
 
+func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.Game, int, error) {
+	const op = "services.games.GetAllPaginatedForUser"
+
+	var results []models.Game
+	var count int64
+
+	offset := (page - 1) * pageSize
+
+	if err := s.storage.DB.
+		Model(&models.Game{}).
+		Joins("JOIN user_games ON user_games.game_id = games.id").
+		Where("user_games.user_id = ?", userID).
+		Count(&count).Error; err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	if err := s.storage.DB.
+		Model(&models.Game{}).
+		Joins("JOIN user_games ON user_games.game_id = games.id").
+		Where("user_games.user_id = ?", userID).
+		Offset(offset).
+		Limit(pageSize).
+		Find(&results).Error; err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return results, int(count), nil
+}
+
 func (s *GameService) GetByID(id int64) (*models.Game, error) {
 	const op = "services.games.GetByID"
 
@@ -54,8 +77,43 @@ func (s *GameService) GetByID(id int64) (*models.Game, error) {
 	return &g, nil
 }
 
+func (s *GameService) SearchAllGames(query string) ([]models.Game, error) {
+	const op = "services.games.SearchAllGames"
+
+	var results []models.Game
+	rows := s.storage.DB.Where("title LIKE ?", "%"+query+"%").Find(&results)
+	if rows.Error != nil {
+		return nil, fmt.Errorf("%s: %w", op, rows.Error)
+	}
+
+	return results, nil
+}
+
+func (s *GameService) SearchUserGames(userID int64, query string) ([]models.Game, error) {
+	const op = "services.games.SearchUserGames"
+
+	var results []models.Game
+	rows := s.storage.DB.
+		Model(&models.Game{}).
+		Joins("JOIN user_games ON user_games.game_id = games.id").
+		Where("user_games.user_id = ?", userID).
+		Where("games.title LIKE ?", "%"+query+"%").
+		Find(&results)
+	if rows.Error != nil {
+		return nil, fmt.Errorf("%s: %w", op, rows.Error)
+	}
+
+	return results, nil
+}
+
 func (s *GameService) Create(g *models.Game) (*models.Game, error) {
 	const op = "services.games.Create"
+
+	err := s.GetGameByURL(g.URL)
+	if err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
 	tx := s.storage.DB.Begin()
 	if tx.Error != nil {
 		return nil, fmt.Errorf("%s: %w", op, tx.Error)
@@ -145,8 +203,64 @@ func (s *GameService) GetGameByURL(url string) error {
 	}
 
 	rows := s.storage.DB.Where("url = ?", url).First(&models.Game{})
-	if rows.Error != nil {
-		return fmt.Errorf("%s: %w", op, rows.Error)
+	fmt.Println(rows)
+	if rows.Error != nil && !errors.Is(rows.Error, gorm.ErrRecordNotFound) {
+		return nil
+	}
+	if rows.Error == nil {
+		return fmt.Errorf("%s: %w", op, errors.New("game already exists"))
+	}
+
+	return nil
+}
+
+func (s *GameService) CreateUserGame(ug *models.UserGames) error {
+	const op = "services.games.CreateUserGame"
+
+	var existing models.UserGames
+	err := s.storage.DB.Where(
+		"user_id = ? AND game_id = ?",
+		ug.UserID,
+		ug.GameID,
+	).First(&existing).Error
+	if err == nil {
+		return nil
+	}
+
+	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	if err := s.storage.DB.Create(ug).Error; err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
+	const op = "services.games.UpdateUserGame"
+
+	var existing models.UserGames
+	if err := s.storage.DB.Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).First(&existing).Error; err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	existing.Priority = ug.Priority
+	existing.Status = ug.Status
+
+	if err := s.storage.DB.Save(&existing).Error; err != nil {
+		return fmt.Errorf("%s: %w", op, err)
+	}
+
+	return nil
+}
+
+func (s *GameService) DeleteUserGame(userID, gameID int64) error {
+	const op = "services.games.DeleteUserGame"
+
+	if err := s.storage.DB.Where("user_id = ? AND game_id = ?", userID, gameID).Delete(&models.UserGames{}).Error; err != nil {
+		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	return nil

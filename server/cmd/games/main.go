@@ -11,9 +11,12 @@ import (
 	"time"
 
 	"games_webapp/internal/config"
+	"games_webapp/internal/middleware"
 	"games_webapp/internal/routes"
 	"games_webapp/internal/storage/mariadb"
 	"games_webapp/internal/storage/uploads"
+
+	ssogrpc "games_webapp/internal/clients/sso/grpc"
 )
 
 const (
@@ -29,6 +32,20 @@ func main() {
 	log := setupLogger(cfg.Env)
 
 	log.Info("starting server", slog.String("env", cfg.Env))
+
+	ssoClient, err := ssogrpc.New(
+		context.Background(),
+		log,
+		cfg.Clients.SSO.Address,
+		cfg.Clients.SSO.Timeout,
+		cfg.Clients.SSO.RetriesCount,
+	)
+	if err != nil {
+		log.Error("failed to create sso client", slog.String("error", err.Error()))
+		panic("sso-err")
+	}
+
+	authMiddleware := middleware.NewAuthMiddleware(ssoClient)
 
 	storage, err := mariadb.New(cfg.Database)
 	if err != nil {
@@ -58,7 +75,7 @@ func main() {
 
 	log.Info("database init")
 
-	r := routes.SetupRouter(log, storage, uploadsStorage)
+	r := routes.SetupRouter(log, storage, uploadsStorage, authMiddleware, ssoClient)
 
 	log.Info("routes init")
 

@@ -2,6 +2,7 @@ package uploads
 
 import (
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -17,6 +18,7 @@ var (
 type IUploads interface {
 	SaveImage(image []byte, filename string) error
 	DeleteImage(filename string) error
+	ReplaceImage(image []byte, oldFilename string) error
 }
 
 type Uploads struct {
@@ -110,6 +112,7 @@ func (u *Uploads) ReplaceImage(image []byte, oldFilename string) error {
 	}
 
 	fullPath := filepath.Join(u.folderPath, oldFilename)
+	fmt.Println(fullPath)
 
 	if _, err := os.Stat(fullPath); os.IsNotExist(err) {
 		return ErrFileNotExists

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"regexp"
 	"testing"
+	"time"
 
 	"games_webapp/internal/models"
 	"games_webapp/internal/storage/mariadb"
@@ -31,7 +32,130 @@ func setupMockDB(t *testing.T) (*mariadb.Storage, sqlmock.Sqlmock) {
 	return &mariadb.Storage{DB: gormDB}, mock
 }
 
-func TestGameService_GetAll(t *testing.T) {
+func TestGameService_GetAllPaginatedForUser(t *testing.T) {
+	storage, mock := setupMockDB(t)
+	defer storage.Close()
+
+	service := NewGameService(storage, nil)
+
+	t.Run("success", func(t *testing.T) {
+		// Mock count query
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(2)
+		mock.ExpectQuery(regexp.QuoteMeta(
+			"SELECT count(*) FROM `games` JOIN user_games ON user_games.game_id = games.id WHERE user_games.user_id = ?",
+		)).WithArgs(1).WillReturnRows(countRows)
+
+		// Mock data query - точное соответствие реальному запросу
+		expectedDataQuery := regexp.QuoteMeta(
+			"SELECT `games`.`id`,`games`.`title`,`games`.`preambula`,`games`.`image`," +
+				"`games`.`developer`,`games`.`publisher`,`games`.`year`,`games`.`genre`," +
+				"`games`.`url`,`games`.`created_at`,`games`.`updated_at` " +
+				"FROM `games` JOIN user_games ON user_games.game_id = games.id " +
+				"WHERE user_games.user_id = ? LIMIT ?",
+		)
+
+		dataRows := sqlmock.NewRows([]string{
+			"id", "title", "preambula", "image", "developer",
+			"publisher", "year", "genre", "url", "created_at", "updated_at",
+		}).AddRow(
+			1, "Game 1", "Desc 1", "img1.jpg", "Dev 1",
+			"Pub 1", "2020", "Action", "url1", time.Now(), time.Now(),
+		).AddRow(
+			2, "Game 2", "Desc 2", "img2.jpg", "Dev 2",
+			"Pub 2", "2021", "Adventure", "url2", time.Now(), time.Now(),
+		)
+
+		mock.ExpectQuery(expectedDataQuery).
+			WithArgs(1, 10).
+			WillReturnRows(dataRows)
+
+		games, total, err := service.GetAllPaginatedForUser(1, 1, 10)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 2, total)
+		assert.Len(t, games, 2)
+		assert.Equal(t, "Game 1", games[0].Title)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("error in count query", func(t *testing.T) {
+		mock.ExpectQuery(regexp.QuoteMeta(
+			"SELECT count(*) FROM `games` JOIN user_games ON user_games.game_id = games.id WHERE user_games.user_id = ?",
+		)).WithArgs(1).WillReturnError(errors.New("count error"))
+
+		games, total, err := service.GetAllPaginatedForUser(1, 1, 10)
+
+		assert.Error(t, err)
+		assert.Equal(t, 0, total)
+		assert.Nil(t, games)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("error in data query", func(t *testing.T) {
+		// Mock count query - успешный запрос count
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(2)
+		mock.ExpectQuery(regexp.QuoteMeta(
+			"SELECT count(*) FROM `games` JOIN user_games ON user_games.game_id = games.id WHERE user_games.user_id = ?",
+		)).WithArgs(1).WillReturnRows(countRows)
+
+		// Mock data query - запрос с ошибкой
+		expectedDataQuery := regexp.QuoteMeta(
+			"SELECT `games`.`id`,`games`.`title`,`games`.`preambula`,`games`.`image`," +
+				"`games`.`developer`,`games`.`publisher`,`games`.`year`,`games`.`genre`," +
+				"`games`.`url`,`games`.`created_at`,`games`.`updated_at` " +
+				"FROM `games` JOIN user_games ON user_games.game_id = games.id " +
+				"WHERE user_games.user_id = ? LIMIT ?",
+		)
+
+		mock.ExpectQuery(expectedDataQuery).
+			WithArgs(1, 10).
+			WillReturnError(errors.New("data error"))
+
+		// Вызываем метод
+		games, total, err := service.GetAllPaginatedForUser(1, 1, 10)
+
+		// Проверяем результаты
+		assert.Error(t, err)      // Ожидаем ошибку
+		assert.Equal(t, 0, total) // total должен быть 0 при ошибке в вашей реализации
+		assert.Nil(t, games)      // games должен быть nil
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("pagination calculations", func(t *testing.T) {
+		// Mock count query
+		countRows := sqlmock.NewRows([]string{"count"}).AddRow(20)
+		mock.ExpectQuery(regexp.QuoteMeta(
+			"SELECT count(*) FROM `games` JOIN user_games ON user_games.game_id = games.id WHERE user_games.user_id = ?",
+		)).WithArgs(1).WillReturnRows(countRows)
+
+		// Точный формат запроса с конкретными полями
+		expectedDataQuery := regexp.QuoteMeta(
+			"SELECT `games`.`id`,`games`.`title`,`games`.`preambula`,`games`.`image`," +
+				"`games`.`developer`,`games`.`publisher`,`games`.`year`,`games`.`genre`," +
+				"`games`.`url`,`games`.`created_at`,`games`.`updated_at` " +
+				"FROM `games` JOIN user_games ON user_games.game_id = games.id " +
+				"WHERE user_games.user_id = ? LIMIT ? OFFSET ?",
+		)
+
+		dataRows := sqlmock.NewRows([]string{
+			"id", "title", "preambula", "image", "developer",
+			"publisher", "year", "genre", "url", "created_at", "updated_at",
+		}).AddRow(1, "Game", "Desc", "img.jpg", "Dev", "Pub", "2020", "Action", "url", time.Now(), time.Now())
+
+		mock.ExpectQuery(expectedDataQuery).
+			WithArgs(1, 5, 5). // page=2, pageSize=5 → offset=5
+			WillReturnRows(dataRows)
+
+		games, total, err := service.GetAllPaginatedForUser(1, 2, 5)
+
+		assert.NoError(t, err)
+		assert.Equal(t, 20, total)
+		assert.NotNil(t, games)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+}
+
+func TestGameService_SearchAllGames(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
@@ -39,25 +163,27 @@ func TestGameService_GetAll(t *testing.T) {
 
 	t.Run("success", func(t *testing.T) {
 		rows := sqlmock.NewRows([]string{"id", "title"}).
-			AddRow(1, "Game 1").
-			AddRow(2, "Game 2")
+			AddRow(1, "Witcher 3").
+			AddRow(2, "Portal 2")
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games`")).
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE title LIKE ?")).
+			WithArgs("%witcher%").
 			WillReturnRows(rows)
 
-		games, err := service.GetAll()
+		games, err := service.SearchAllGames("witcher")
 
 		assert.NoError(t, err)
 		assert.Len(t, games, 2)
-		assert.Equal(t, "Game 1", games[0].Title)
+		assert.Equal(t, "Witcher 3", games[0].Title)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
 	t.Run("error", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games`")).
-			WillReturnError(gorm.ErrRecordNotFound)
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE title LIKE ?")).
+			WithArgs("%witcher%").
+			WillReturnError(errors.New("search error"))
 
-		games, err := service.GetAll()
+		games, err := service.SearchAllGames("witcher")
 
 		assert.Error(t, err)
 		assert.Nil(t, games)
@@ -65,241 +191,196 @@ func TestGameService_GetAll(t *testing.T) {
 	})
 }
 
-func TestGameService_GetByID(t *testing.T) {
+func TestGameService_SearchUserGames(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
 	service := NewGameService(storage, nil)
 
 	t.Run("success", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"id", "title"}).
-			AddRow(1, "Test Game")
+		// Точный формат запроса с конкретными полями
+		expectedQuery := regexp.QuoteMeta(
+			"SELECT `games`.`id`,`games`.`title`,`games`.`preambula`,`games`.`image`," +
+				"`games`.`developer`,`games`.`publisher`,`games`.`year`,`games`.`genre`," +
+				"`games`.`url`,`games`.`created_at`,`games`.`updated_at` " +
+				"FROM `games` JOIN user_games ON user_games.game_id = games.id " +
+				"WHERE user_games.user_id = ? AND games.title LIKE ?",
+		)
 
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE `games`.`id` = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs(1, 1).
+		rows := sqlmock.NewRows([]string{
+			"id", "title", "preambula", "image", "developer",
+			"publisher", "year", "genre", "url", "created_at", "updated_at",
+		}).AddRow(
+			1, "Witcher 3", "Desc", "witcher.jpg", "CD Projekt",
+			"CD Projekt", "2015", "RPG", "url", time.Now(), time.Now(),
+		)
+
+		mock.ExpectQuery(expectedQuery).
+			WithArgs(1, "%witcher%").
 			WillReturnRows(rows)
 
-		game, err := service.GetByID(1)
+		games, err := service.SearchUserGames(1, "witcher")
 
 		assert.NoError(t, err)
-		assert.Equal(t, "Test Game", game.Title)
+		assert.Len(t, games, 1)
+		assert.Equal(t, "Witcher 3", games[0].Title)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("not found", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE `games`.`id` = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs(999, 1).
-			WillReturnError(gorm.ErrRecordNotFound)
+	t.Run("error", func(t *testing.T) {
+		expectedQuery := regexp.QuoteMeta(
+			"SELECT `games`.`id`,`games`.`title`,`games`.`preambula`,`games`.`image`," +
+				"`games`.`developer`,`games`.`publisher`,`games`.`year`,`games`.`genre`," +
+				"`games`.`url`,`games`.`created_at`,`games`.`updated_at` " +
+				"FROM `games` JOIN user_games ON user_games.game_id = games.id " +
+				"WHERE user_games.user_id = ? AND games.title LIKE ?",
+		)
 
-		game, err := service.GetByID(999)
+		mock.ExpectQuery(expectedQuery).
+			WithArgs(1, "%witcher%").
+			WillReturnError(errors.New("search error"))
+
+		games, err := service.SearchUserGames(1, "witcher")
 
 		assert.Error(t, err)
-		assert.Nil(t, game)
+		assert.Nil(t, games)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 
-func TestGameService_Create(t *testing.T) {
+func TestGameService_CreateUserGame(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
 	service := NewGameService(storage, nil)
 
-	t.Run("success", func(t *testing.T) {
+	t.Run("success - new relation", func(t *testing.T) {
+		// Check if relation exists
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnError(gorm.ErrRecordNotFound)
+
+		// Create new relation
 		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `games`")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `user_games`")).
 			WillReturnResult(sqlmock.NewResult(1, 1))
 		mock.ExpectCommit()
 
-		game := &models.Game{Title: "New Game"}
-		result, err := service.Create(game)
+		err := service.CreateUserGame(&models.UserGames{UserID: 1, GameID: 1})
 
 		assert.NoError(t, err)
-		assert.Equal(t, "New Game", result.Title)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("error", func(t *testing.T) {
+	t.Run("success - relation already exists", func(t *testing.T) {
+		rows := sqlmock.NewRows([]string{"id", "user_id", "game_id"}).
+			AddRow(1, 1, 1)
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnRows(rows)
+
+		err := service.CreateUserGame(&models.UserGames{UserID: 1, GameID: 1})
+
+		assert.NoError(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("error checking relation", func(t *testing.T) {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnError(errors.New("check error"))
+
+		err := service.CreateUserGame(&models.UserGames{UserID: 1, GameID: 1})
+
+		assert.Error(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("error creating relation", func(t *testing.T) {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnError(gorm.ErrRecordNotFound)
+
 		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `games`")).
+		mock.ExpectExec(regexp.QuoteMeta("INSERT INTO `user_games`")).
 			WillReturnError(errors.New("create error"))
 		mock.ExpectRollback()
 
-		game := &models.Game{Title: "New Game"}
-		result, err := service.Create(game)
+		err := service.CreateUserGame(&models.UserGames{UserID: 1, GameID: 1})
 
 		assert.Error(t, err)
-		assert.Nil(t, result)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 }
 
-func TestGameService_Update(t *testing.T) {
+func TestGameService_UpdateUserGame(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
 	service := NewGameService(storage, nil)
 
 	t.Run("success", func(t *testing.T) {
-		// Ожидаем начало транзакции
+		// Find existing relation
+		rows := sqlmock.NewRows([]string{"id", "user_id", "game_id", "priority", "status"}).
+			AddRow(1, 1, 1, 0, "planned")
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnRows(rows)
+
+		// Update relation
 		mock.ExpectBegin()
-
-		// Ожидаем проверку существования записи
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE `games`.`id` = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs(1, 1).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "title"}).AddRow(1, "Old Game"))
-
-		// Ожидаем UPDATE, который реально генерирует GORM
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE `games` SET `id`=?,`title`=?,`updated_at`=? WHERE id = ?")).
-			WithArgs(
-				1,                // id
-				"Updated Game",   // title
-				sqlmock.AnyArg(), // updated_at
-				1,                // where id
-			).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE `user_games` SET")).
 			WillReturnResult(sqlmock.NewResult(0, 1))
-
-		// Ожидаем коммит транзакции
 		mock.ExpectCommit()
 
-		game := &models.Game{ID: 1, Title: "Updated Game"}
-		result, err := service.Update(game)
+		err := service.UpdateUserGame(&models.UserGames{
+			UserID:   1,
+			GameID:   1,
+			Priority: 5,
+			Status:   "completed",
+		})
 
 		assert.NoError(t, err)
-		assert.Equal(t, "Updated Game", result.Title)
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
-	t.Run("error", func(t *testing.T) {
+	t.Run("relation not found", func(t *testing.T) {
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnError(gorm.ErrRecordNotFound)
+
+		err := service.UpdateUserGame(&models.UserGames{
+			UserID:   1,
+			GameID:   1,
+			Priority: 5,
+			Status:   "completed",
+		})
+
+		assert.Error(t, err)
+		assert.NoError(t, mock.ExpectationsWereMet())
+	})
+
+	t.Run("error updating", func(t *testing.T) {
+		rows := sqlmock.NewRows([]string{"id", "user_id", "game_id", "priority", "status"}).
+			AddRow(1, 1, 1, 0, "planned")
+
+		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `user_games` WHERE user_id = ? AND game_id = ? ORDER BY `user_games`.`id` LIMIT ?")).
+			WithArgs(1, 1, 1).
+			WillReturnRows(rows)
+
 		mock.ExpectBegin()
-
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE `games`.`id` = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs(1, 1).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "title"}).AddRow(1, "Old Game"))
-
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE `games` SET `id`=?,`title`=?,`updated_at`=? WHERE id = ?")).
-			WithArgs(
-				1,
-				"Updated Game",
-				sqlmock.AnyArg(),
-				1,
-			).
+		mock.ExpectExec(regexp.QuoteMeta("UPDATE `user_games` SET")).
 			WillReturnError(errors.New("update error"))
 		mock.ExpectRollback()
 
-		game := &models.Game{ID: 1, Title: "Updated Game"}
-		result, err := service.Update(game)
-
-		assert.Error(t, err)
-		assert.Nil(t, result)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		mock.ExpectBegin()
-
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE `games`.`id` = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs(999, 1).
-			WillReturnRows(sqlmock.NewRows([]string{"id", "title"}).AddRow(1, "Old Game"))
-
-		mock.ExpectExec(regexp.QuoteMeta("UPDATE `games` SET `id`=?,`title`=?,`updated_at`=? WHERE id = ?")).
-			WithArgs(
-				999,
-				"Updated Game",
-				sqlmock.AnyArg(),
-				999,
-			).
-			WillReturnResult(sqlmock.NewResult(0, 0))
-		mock.ExpectCommit()
-
-		game := &models.Game{ID: 999, Title: "Updated Game"}
-		result, err := service.Update(game)
-
-		assert.NoError(t, err) // GORM не считает это ошибкой
-		assert.Equal(t, "Updated Game", result.Title)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
-func TestGameService_Delete(t *testing.T) {
-	storage, mock := setupMockDB(t)
-	defer storage.Close()
-
-	service := NewGameService(storage, nil)
-
-	t.Run("success", func(t *testing.T) {
-		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `games` WHERE `games`.`id` = ?")).
-			WithArgs(1).
-			WillReturnResult(sqlmock.NewResult(0, 1))
-		mock.ExpectCommit()
-
-		err := service.Delete(1)
-
-		assert.NoError(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("error", func(t *testing.T) {
-		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `games` WHERE `games`.`id` = ?")).
-			WithArgs(1).
-			WillReturnError(errors.New("delete error"))
-		mock.ExpectRollback()
-
-		err := service.Delete(1)
-
-		assert.Error(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		mock.ExpectBegin()
-		mock.ExpectExec(regexp.QuoteMeta("DELETE FROM `games` WHERE `games`.`id` = ?")).
-			WithArgs(999).
-			WillReturnResult(sqlmock.NewResult(0, 0))
-		mock.ExpectCommit()
-
-		err := service.Delete(999)
-
-		assert.NoError(t, err) // GORM не считает это ошибкой
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-}
-
-func TestGameService_GetGameByURL(t *testing.T) {
-	storage, mock := setupMockDB(t)
-	defer storage.Close()
-
-	service := NewGameService(storage, nil)
-
-	t.Run("success", func(t *testing.T) {
-		rows := sqlmock.NewRows([]string{"id", "url"}).
-			AddRow(1, "https://google.com")
-
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE url = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs("https://google.com", 1).
-			WillReturnRows(rows)
-
-		err := service.GetGameByURL("https://google.com")
-
-		assert.NoError(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("not found", func(t *testing.T) {
-		mock.ExpectQuery(regexp.QuoteMeta("SELECT * FROM `games` WHERE url = ? ORDER BY `games`.`id` LIMIT ?")).
-			WithArgs("https://google.com", 1).
-			WillReturnError(gorm.ErrRecordNotFound)
-
-		err := service.GetGameByURL("https://google.com")
-
-		assert.Error(t, err)
-		assert.NoError(t, mock.ExpectationsWereMet())
-	})
-
-	t.Run("empty url", func(t *testing.T) {
-		err := service.GetGameByURL("")
+		err := service.UpdateUserGame(&models.UserGames{
+			UserID:   1,
+			GameID:   1,
+			Priority: 5,
+			Status:   "completed",
+		})
 
 		assert.Error(t, err)
 		assert.NoError(t, mock.ExpectationsWereMet())

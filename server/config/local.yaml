@@ -1,5 +1,6 @@
 env: local
 uploads_path: ../uploads
+app_secret: test-secret
 
 database:
     host: localhost
@@ -12,3 +13,10 @@ http_server:
     address: localhost:8082
     timeout: 4s
     idle_timeout: 60s
+
+clients:
+    sso:
+        address: localhost:44044
+        timeout: 4s
+        retries_count: 3
+        insecure: true

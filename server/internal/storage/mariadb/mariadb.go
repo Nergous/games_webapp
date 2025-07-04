@@ -38,7 +38,7 @@ func (s *Storage) Close() error {
 
 func (s *Storage) Migrate() error {
 	const op = "storage.mariadb.Migrate"
-	err := s.DB.AutoMigrate(&models.Game{})
+	err := s.DB.AutoMigrate(&models.Game{}, &models.UserGames{})
 	if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}

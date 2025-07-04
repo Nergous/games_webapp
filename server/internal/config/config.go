@@ -15,6 +15,8 @@ type Config struct {
 	UploadsPath string `yaml:"uploads_path" env:"UPLOADS_PATH" env-required:"true"`
 	Database    `yaml:"database"`
 	HTTPServer  `yaml:"http_server"`
+	Clients     ClientsConfig `yaml:"clients"`
+	AppSecret   string        `yaml:"app_secret" env:"APP_SECRET" env-required:"true"`
 }
 
 type Database struct {
@@ -29,6 +31,17 @@ type HTTPServer struct {
 	Address     string        `yaml:"address" env-default:"localhost:8080"`
 	Timeout     time.Duration `yaml:"timeout" env-default:"4s"`
 	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s"`
+}
+
+type Client struct {
+	Address      string        `yaml:"address" env-required:"true"`
+	Timeout      time.Duration `yaml:"timeout" env-required:"true"`
+	RetriesCount int           `yaml:"retries_count" env-required:"true"`
+	Insecure     bool          `yaml:"insecure" env-required:"true"`
+}
+
+type ClientsConfig struct {
+	SSO Client `yaml:"sso"`
 }
 
 func MustLoad() *Config {
