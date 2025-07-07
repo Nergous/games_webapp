@@ -35,16 +35,16 @@ func (s *GameService) GetAll() ([]models.Game, error) {
 	return results, nil
 }
 
-func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.Game, int, error) {
+func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.UserGameResponse, int, error) {
 	const op = "services.games.GetAllPaginatedForUser"
 
-	var results []models.Game
+	var results []models.UserGameResponse
 	var count int64
 
 	offset := (page - 1) * pageSize
 
 	if err := s.storage.DB.
-		Model(&models.Game{}).
+		Model(&models.UserGameResponse{}).
 		Joins("JOIN user_games ON user_games.game_id = games.id").
 		Where("user_games.user_id = ?", userID).
 		Count(&count).Error; err != nil {
@@ -52,7 +52,7 @@ func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) (
 	}
 
 	if err := s.storage.DB.
-		Model(&models.Game{}).
+		Model(&models.UserGameResponse{}).
 		Joins("JOIN user_games ON user_games.game_id = games.id").
 		Where("user_games.user_id = ?", userID).
 		Offset(offset).

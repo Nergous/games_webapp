@@ -10,6 +10,7 @@ import (
 	"strings"
 	"unicode"
 
+	"games_webapp/internal/middleware"
 	"games_webapp/internal/storage/uploads"
 
 	ssov1 "github.com/Nergous/sso_protos/gen/go/sso"
@@ -145,7 +146,7 @@ type GetUserInfoResponse struct {
 }
 
 func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value("user_id").(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return

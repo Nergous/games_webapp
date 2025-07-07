@@ -27,7 +27,7 @@ import (
 
 type GameServicer interface {
 	GetAll() ([]models.Game, error)
-	GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.Game, int, error)
+	GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.UserGameResponse, int, error)
 	GetByID(id int64) (*models.Game, error)
 	SearchAllGames(query string) ([]models.Game, error)
 	SearchUserGames(userID int64, query string) ([]models.Game, error)
@@ -69,11 +69,11 @@ type MultiGameResponse struct {
 }
 
 type PaginationResponse struct {
-	Total   int           `json:"total"`   // Общее кол-во элементов
-	Pages   int           `json:"pages"`   // Общее кол-во страниц
-	Current int           `json:"current"` // Текущая страница
-	Size    int           `json:"size"`    // Количество элементов на странице
-	Data    []models.Game `json:"data"`
+	Total   int                       `json:"total"`   // Общее кол-во элементов
+	Pages   int                       `json:"pages"`   // Общее кол-во страниц
+	Current int                       `json:"current"` // Текущая страница
+	Size    int                       `json:"size"`    // Количество элементов на странице
+	Data    []models.UserGameResponse `json:"data"`
 }
 
 type GameController struct {

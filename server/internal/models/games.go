@@ -18,3 +18,9 @@ type Game struct {
 	CreatedAt *time.Time `json:"created_at" gorm:"type:timestamp"`
 	UpdatedAt *time.Time `json:"updated_at" gorm:"type:timestamp"`
 }
+
+type UserGameResponse struct {
+	Game
+	Priority int        `json:"priority"`
+	Status   GameStatus `json:"status"`
+}
