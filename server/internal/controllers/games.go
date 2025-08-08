@@ -40,8 +40,13 @@ type GameServicer interface {
 	DeleteUserGame(userID, gameID int64) error
 }
 
-type requestData struct {
-	Names []string `json:"names"`
+type RequestGame struct {
+	Name   string `json:"names"`
+	Source string `json:"source"`
+}
+
+type RequestData struct {
+	Games []RequestGame `json:"games"`
 }
 
 type CreateGameRequest struct {
@@ -539,7 +544,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Request) {
-	var request requestData
+	var request RequestData
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		c.log.Error(ErrBadRequest.Error(), slog.String("error", err.Error()))
@@ -547,13 +552,13 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
-	if len(request.Names) == 0 {
+	if len(request.Games) == 0 {
 		c.log.Error(ErrBadRequest.Error(), slog.String("error", "no games names"))
 		http.Error(w, ErrBadRequest.Error(), http.StatusBadRequest)
 		return
 	}
 
-	if len(request.Names) > 100 {
+	if len(request.Games) > 100 {
 		c.log.Error(ErrTooManyGames.Error(), slog.String("error", "over 100 games"))
 		http.Error(w, ErrTooManyGames.Error(), http.StatusBadRequest)
 		return
@@ -563,30 +568,30 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 		maxWorkers  = 10
 		sem         = make(chan struct{}, maxWorkers)
 		wg          sync.WaitGroup
-		errChan     = make(chan error, len(request.Names))
-		resultsChan = make(chan *models.Game, len(request.Names))
+		errChan     = make(chan error, len(request.Games))
+		resultsChan = make(chan *models.Game, len(request.Games))
 	)
 
 	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
 
 	defer cancel()
 
-	for _, gameName := range request.Names {
+	for _, game := range request.Games {
 		sem <- struct{}{}
 		wg.Add(1)
-		go func(name string) {
+		go func(name, source string) {
 			defer func() {
 				<-sem
 				wg.Done()
 			}()
 
-			game, err := c.createSingleGame(ctx, name)
+			game, err := c.createSingleGame(ctx, name, source)
 			if err != nil {
 				errChan <- err
 				return
 			}
 			resultsChan <- game
-		}(gameName)
+		}(game.Name, game.Source)
 	}
 
 	go func() {
@@ -641,7 +646,7 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 	}
 }
 
-func (c *GameController) createSingleGame(ctx context.Context, name string) (*models.Game, error) {
+func (c *GameController) createSingleGame(ctx context.Context, name, source string) (*models.Game, error) {
 	select {
 	case <-ctx.Done():
 		return nil, ctx.Err()
@@ -654,27 +659,25 @@ func (c *GameController) createSingleGame(ctx context.Context, name string) (*mo
 		return nil, errors.New("unauthorized")
 	}
 
-	url, err := c.findGameWiki(name)
-	if err != nil {
-		c.log.Error(
-			ErrGameWiki.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", name))
-		return nil, fmt.Errorf(ErrGameWiki.Error()+" %s : %s", name, err)
+	var resultMap map[string]string
+	var err error
+	url := ""
+
+	if source != "Wiki" && source != "Steam" {
+		return nil, errors.New("invalid source")
 	}
 
-	if err := c.checkURLInDB(url); err != nil {
-		return nil, fmt.Errorf("game already exists: %s", url)
-	}
-
-	resultMap, err := c.parseGameWiki(url)
-	if err != nil {
-		c.log.Error(
-			ErrParsing.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", name),
-			slog.String("url", url))
-		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
+	switch source {
+	case "Wiki":
+		resultMap, err = c.processWiki(name)
+		if err != nil {
+			return nil, err
+		}
+	case "Steam":
+		resultMap, err = c.processSteam(name)
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	imageFilename, err := c.downloadAndSaveImage(resultMap["image"])
@@ -736,6 +739,190 @@ func (c *GameController) createSingleGame(ctx context.Context, name string) (*mo
 		return nil, fmt.Errorf(ErrCreate.Error()+" %s : %s", name, err)
 	}
 	return game, nil
+}
+
+func (c *GameController) processWiki(name string) (map[string]string, error) {
+	url, err := c.findGameWiki(name)
+	if err != nil {
+		c.log.Error(
+			ErrGameWiki.Error(),
+			slog.String("error", err.Error()),
+			slog.String("game", name))
+		return nil, fmt.Errorf(ErrGameWiki.Error()+" %s : %s", name, err)
+	}
+
+	if err := c.checkURLInDB(url); err != nil {
+		return nil, fmt.Errorf("game already exists: %s", url)
+	}
+
+	resultMap, err := c.parseGameWiki(url)
+	if err != nil {
+		c.log.Error(
+			ErrParsing.Error(),
+			slog.String("error", err.Error()),
+			slog.String("game", name),
+			slog.String("url", url))
+		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
+	}
+
+	return resultMap, nil
+}
+
+func (c *GameController) processSteam(name string) (map[string]string, error) {
+	url, err := c.findGameSteam(name)
+	if err != nil {
+		c.log.Error(
+			ErrGameSteam.Error(),
+			slog.String("error", err.Error()),
+			slog.String("game", name))
+
+		result, err := c.processWiki(name)
+		if err != nil {
+			return nil, err
+		}
+
+		return result, nil
+	}
+
+	if err := c.checkURLInDB(url); err != nil {
+		return nil, fmt.Errorf("game already exists: %s", url)
+	}
+
+	resultMap, err := c.parseGameSteam(url)
+	if err != nil {
+		c.log.Error(
+			ErrParsing.Error(),
+			slog.String("error", err.Error()),
+			slog.String("game", name),
+			slog.String("url", url))
+		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
+	}
+
+	return resultMap, nil
+}
+
+func (c *GameController) findGameSteam(name string) (string, error) {
+	steamSearchUrl := "https://store.steampowered.com/search/suggest"
+
+	params := url.Values{}
+	params.Add("term", name)
+	params.Add("f", "games")
+	params.Add("cc", "RU")
+	params.Add("l", "russian")
+	params.Add("realm", "1")
+
+	req, err := http.NewRequest("GET", steamSearchUrl, nil)
+	if err != nil {
+		return "", err
+	}
+	req.URL.RawQuery = params.Encode()
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
+	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4")
+
+	cookies := map[string]string{
+		"steamCountry":         "RU|Moscow",
+		"birthtime":            "473385601",
+		"wants_mature_content": "1",
+		"Steam_Language":       "russian",
+	}
+
+	for k, v := range cookies {
+		req.AddCookie(&http.Cookie{Name: k, Value: v})
+	}
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return "", err
+	}
+
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+	}
+
+	// Парсим HTML
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return "", err
+	}
+
+	// Находим первую игру
+	firstLink := ""
+	doc.Find("a.match").EachWithBreak(func(i int, s *goquery.Selection) bool {
+		href, exists := s.Attr("href")
+		if exists {
+			firstLink = href
+			return false // остановить после первой
+		}
+		return true
+	})
+
+	if firstLink == "" {
+		return "", fmt.Errorf("no games found for '%s'", name)
+	}
+
+	return firstLink, nil
+}
+
+func (c *GameController) parseGameSteam(url string) (map[string]string, error) {
+	resp, err := http.Get(url)
+	if err != nil {
+		return nil, fmt.Errorf("failed to get Steam page: %w", err)
+	}
+	defer resp.Body.Close()
+
+	if resp.StatusCode != http.StatusOK {
+		return nil, fmt.Errorf("steam returned status: %d", resp.StatusCode)
+	}
+
+	doc, err := goquery.NewDocumentFromReader(resp.Body)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse HTML: %w", err)
+	}
+
+	// Получаем весь текст из блока
+	detailsText := doc.Find("div.details_block, #genresAndManufacturer").Text()
+	detailsText = strings.ReplaceAll(detailsText, "\n", " ") // Упрощаем текст
+	detailsText = regexp.MustCompile(`\s+`).ReplaceAllString(detailsText, " ")
+
+	result := make(map[string]string)
+
+	// Парсим поля по простым шаблонам
+	parseField := func(detailsText, pattern string) string {
+		re := regexp.MustCompile(pattern)
+		matches := re.FindStringSubmatch(detailsText)
+		if len(matches) > 1 {
+			return strings.TrimSpace(matches[1])
+		}
+		return ""
+	}
+
+	result["title"] = parseField(detailsText, `Title:\s*([^ ]+.*?)Genre:`)
+	result["genre"] = parseField(detailsText, `Genre:\s*([^ ]+.*?)Developer:`)
+	result["developer"] = parseField(detailsText, `Developer:\s*([^ ]+.*?)Publisher:`)
+	result["publisher"] = parseField(detailsText, `Publisher:\s*([^ ]+.*?)Release Date:`)
+	result["release_date"] = parseField(detailsText, `Release Date:\s*([^ ]+.*?)$`)
+
+	// Извлекаем год из даты
+	if year := regexp.MustCompile(`(20\d{2}|19\d{2})`).FindString(result["release_date"]); year != "" {
+		result["year"] = year
+	}
+
+	// Дополнительные поля
+	result["description"] = strings.TrimSpace(doc.Find("div.game_description_snippet").Text())
+	if img, ok := doc.Find("img.game_header_image_full").Attr("src"); ok {
+		result["image"] = img
+	}
+
+	// Проверка обязательных полей
+	if result["title"] == "" || result["developer"] == "" {
+		return nil, fmt.Errorf("failed to parse required fields")
+	}
+
+	return result, nil
 }
 
 func (c *GameController) findGameWiki(gameName string) (string, error) {

@@ -17,4 +17,5 @@ var (
 	ErrDelete        = errors.New("failed to delete")
 	ErrEncoding      = errors.New("failed to encode")
 	ErrInvalidURL    = errors.New("invalid url")
+	ErrGameSteam     = errors.New("failed to get steam game")
 )

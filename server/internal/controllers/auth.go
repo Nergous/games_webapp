@@ -3,7 +3,6 @@ package controllers
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
@@ -51,6 +50,11 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		Email:    r.FormValue("email"),
 		Password: r.FormValue("password"),
 		SteamURL: r.FormValue("steam_url"),
+	}
+
+	if request.Email == "" {
+		http.Error(w, "missing email", http.StatusBadRequest)
+		return
 	}
 
 	if request.Password == "" {
@@ -182,9 +186,6 @@ func generatePhotoFilename(email string) string {
 			return -1
 		}
 	}, email)
-
-	fmt.Println("Original email:", email)
-	fmt.Println("Cleaned email:", cleanEmail)
 
 	return cleanEmail + ".jpg"
 }

@@ -1,4 +1,4 @@
-package services
+package test
 
 import (
 	"errors"
@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"games_webapp/internal/models"
+	"games_webapp/internal/services"
 	"games_webapp/internal/storage/mariadb"
 
 	"github.com/DATA-DOG/go-sqlmock"
@@ -36,7 +37,7 @@ func TestGameService_GetAllPaginatedForUser(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
-	service := NewGameService(storage, nil)
+	service := services.NewGameService(storage, nil)
 
 	t.Run("success", func(t *testing.T) {
 		// Mock count query
@@ -45,24 +46,29 @@ func TestGameService_GetAllPaginatedForUser(t *testing.T) {
 			"SELECT count(*) FROM `games` JOIN user_games ON user_games.game_id = games.id WHERE user_games.user_id = ?",
 		)).WithArgs(1).WillReturnRows(countRows)
 
-		// Mock data query - точное соответствие реальному запросу
+		// Точное соответствие реальному запросу из логов
 		expectedDataQuery := regexp.QuoteMeta(
 			"SELECT `games`.`id`,`games`.`title`,`games`.`preambula`,`games`.`image`," +
 				"`games`.`developer`,`games`.`publisher`,`games`.`year`,`games`.`genre`," +
-				"`games`.`url`,`games`.`created_at`,`games`.`updated_at` " +
+				"`games`.`url`,`games`.`created_at`,`games`.`updated_at`," +
+				"`games`.`priority`,`games`.`status` " + // Обратите внимание - берется из games, а не user_games
 				"FROM `games` JOIN user_games ON user_games.game_id = games.id " +
 				"WHERE user_games.user_id = ? LIMIT ?",
 		)
 
+		// Обновленные строки с правильными именами столбцов
 		dataRows := sqlmock.NewRows([]string{
 			"id", "title", "preambula", "image", "developer",
 			"publisher", "year", "genre", "url", "created_at", "updated_at",
+			"priority", "status",
 		}).AddRow(
 			1, "Game 1", "Desc 1", "img1.jpg", "Dev 1",
 			"Pub 1", "2020", "Action", "url1", time.Now(), time.Now(),
+			1, "planned",
 		).AddRow(
 			2, "Game 2", "Desc 2", "img2.jpg", "Dev 2",
 			"Pub 2", "2021", "Adventure", "url2", time.Now(), time.Now(),
+			2, "completed",
 		)
 
 		mock.ExpectQuery(expectedDataQuery).
@@ -75,6 +81,8 @@ func TestGameService_GetAllPaginatedForUser(t *testing.T) {
 		assert.Equal(t, 2, total)
 		assert.Len(t, games, 2)
 		assert.Equal(t, "Game 1", games[0].Title)
+		assert.Equal(t, 1, games[0].Priority)
+		assert.Equal(t, "planned", string(games[0].Status))
 		assert.NoError(t, mock.ExpectationsWereMet())
 	})
 
@@ -159,7 +167,7 @@ func TestGameService_SearchAllGames(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
-	service := NewGameService(storage, nil)
+	service := services.NewGameService(storage, nil)
 
 	t.Run("success", func(t *testing.T) {
 		rows := sqlmock.NewRows([]string{"id", "title"}).
@@ -195,7 +203,7 @@ func TestGameService_SearchUserGames(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
-	service := NewGameService(storage, nil)
+	service := services.NewGameService(storage, nil)
 
 	t.Run("success", func(t *testing.T) {
 		// Точный формат запроса с конкретными полями
@@ -252,7 +260,7 @@ func TestGameService_CreateUserGame(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
-	service := NewGameService(storage, nil)
+	service := services.NewGameService(storage, nil)
 
 	t.Run("success - new relation", func(t *testing.T) {
 		// Check if relation exists
@@ -318,7 +326,7 @@ func TestGameService_UpdateUserGame(t *testing.T) {
 	storage, mock := setupMockDB(t)
 	defer storage.Close()
 
-	service := NewGameService(storage, nil)
+	service := services.NewGameService(storage, nil)
 
 	t.Run("success", func(t *testing.T) {
 		// Find existing relation

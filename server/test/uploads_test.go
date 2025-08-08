@@ -1,4 +1,4 @@
-package uploads
+package test
 
 import (
 	"bytes"
@@ -6,6 +6,8 @@ import (
 	"path/filepath"
 	"sync"
 	"testing"
+
+	"games_webapp/internal/storage/uploads"
 )
 
 func TestNewUploads(t *testing.T) {
@@ -16,7 +18,7 @@ func TestNewUploads(t *testing.T) {
 		}
 		defer os.RemoveAll(tempDir)
 
-		u, err := NewUploads(tempDir)
+		u, err := uploads.NewUploads(tempDir)
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
 		}
@@ -25,7 +27,7 @@ func TestNewUploads(t *testing.T) {
 		}
 	})
 	t.Run("empty folder path", func(t *testing.T) {
-		u, err := NewUploads("")
+		u, err := uploads.NewUploads("")
 		if err == nil {
 			t.Error("expected error for empty path, got nil")
 		}
@@ -38,7 +40,7 @@ func TestNewUploads(t *testing.T) {
 		tempDir := filepath.Join(os.TempDir(), "nonexistent_subdir", "uploads_test")
 		defer os.RemoveAll(tempDir)
 
-		u, err := NewUploads(tempDir)
+		u, err := uploads.NewUploads(tempDir)
 		if err != nil {
 			t.Errorf("expected folder to be created, got error: %v", err)
 		}
@@ -60,7 +62,7 @@ func TestSaveImage(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	u, err := NewUploads(tempDir)
+	u, err := uploads.NewUploads(tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -92,14 +94,14 @@ func TestSaveImage(t *testing.T) {
 
 	t.Run("empty image data", func(t *testing.T) {
 		err := u.SaveImage([]byte{}, "empty.jpg")
-		if err != ErrInvalidImage {
+		if err != uploads.ErrInvalidImage {
 			t.Errorf("expected ErrInvalidImage, got %v", err)
 		}
 	})
 
 	t.Run("empty filename", func(t *testing.T) {
 		err := u.SaveImage(testImage, "")
-		if err != ErrInvalidFileName {
+		if err != uploads.ErrInvalidFileName {
 			t.Errorf("expected ErrInvalidFileName, got %v", err)
 		}
 	})
@@ -112,7 +114,7 @@ func TestSaveImage(t *testing.T) {
 		}
 
 		err = u.SaveImage(testImage, filename)
-		if err != ErrFileExists {
+		if err != uploads.ErrFileExists {
 			t.Errorf("expected ErrFileExists, got %v", err)
 		}
 	})
@@ -125,7 +127,7 @@ func TestDeleteImage(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	u, err := NewUploads(tempDir)
+	u, err := uploads.NewUploads(tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -154,14 +156,14 @@ func TestDeleteImage(t *testing.T) {
 
 	t.Run("delete non-existent file", func(t *testing.T) {
 		err := u.DeleteImage("nonexistent.jpg")
-		if err != ErrFileNotExists {
+		if err != uploads.ErrFileNotExists {
 			t.Errorf("expected ErrFileNotExists, got %v", err)
 		}
 	})
 
 	t.Run("empty filename", func(t *testing.T) {
 		err := u.DeleteImage("")
-		if err != ErrInvalidFileName {
+		if err != uploads.ErrInvalidFileName {
 			t.Errorf("expected ErrInvalidFileName, got %v", err)
 		}
 	})
@@ -174,7 +176,7 @@ func TestReplaceImage(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	u, err := NewUploads(tempDir)
+	u, err := uploads.NewUploads(tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -208,14 +210,14 @@ func TestReplaceImage(t *testing.T) {
 
 	t.Run("replace with empty image", func(t *testing.T) {
 		err := u.ReplaceImage([]byte{}, filename)
-		if err != ErrInvalidImage {
+		if err != uploads.ErrInvalidImage {
 			t.Errorf("expected ErrInvalidImage, got %v", err)
 		}
 	})
 
 	t.Run("empty filename", func(t *testing.T) {
 		err := u.ReplaceImage(newImage, "")
-		if err != ErrInvalidFileName {
+		if err != uploads.ErrInvalidFileName {
 			t.Errorf("expected ErrInvalidFileName, got %v", err)
 		}
 	})
@@ -235,7 +237,7 @@ func TestConcurrentAccess(t *testing.T) {
 	}
 	defer os.RemoveAll(tempDir)
 
-	u, err := NewUploads(tempDir)
+	u, err := uploads.NewUploads(tempDir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -253,7 +255,7 @@ func TestConcurrentAccess(t *testing.T) {
 			go func() {
 				defer wg.Done()
 				err := u.SaveImage(testImage, filename)
-				if err != nil && err != ErrFileExists {
+				if err != nil && err != uploads.ErrFileExists {
 					errors <- err
 				}
 			}()
@@ -304,7 +306,7 @@ func TestConcurrentAccess(t *testing.T) {
 		for err := range errors {
 			// We expect one of the operations to fail due to race condition,
 			// but it shouldn't be any unexpected error
-			if err != ErrFileNotExists {
+			if err != uploads.ErrFileNotExists {
 				t.Errorf("unexpected error during concurrent operations: %v", err)
 			}
 		}
