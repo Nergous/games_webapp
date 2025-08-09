@@ -586,6 +586,8 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 		return
 	}
 
+	fmt.Println(request)
+
 	if len(request.Games) == 0 {
 		c.log.Error(ErrBadRequest.Error(), slog.String("error", "no games names"))
 		http.Error(w, ErrBadRequest.Error(), http.StatusBadRequest)
