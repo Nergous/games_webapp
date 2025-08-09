@@ -41,7 +41,7 @@ type GameServicer interface {
 }
 
 type RequestGame struct {
-	Name   string `json:"names"`
+	Name   string `json:"name"`
 	Source string `json:"source"`
 }
 
@@ -376,20 +376,55 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		c.log.Error("Ошибка парсинга формы", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "invalid form data", http.StatusBadRequest)
+	contentType := r.Header.Get("Content-Type")
+	var filename string
+	var gameData map[string]interface{}
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		if err := r.ParseMultipartForm(10 << 20); err != nil {
+			c.log.Error("Ошибка парсинга формы", slog.String("operation", op), slog.String("error", err.Error()))
+			http.Error(w, "invalid form data", http.StatusBadRequest)
+			return
+		}
+		filename := r.FormValue("image") // старое имя (можем заменить, если будет файл)
+		file, _, err := r.FormFile("image")
+		if err == nil {
+			defer file.Close()
+
+			imageData, err := io.ReadAll(file)
+			if err != nil {
+				c.log.Error("Ошибка чтения изображения", slog.String("operation", op), slog.String("error", err.Error()))
+				http.Error(w, "failed to read image", http.StatusBadRequest)
+				return
+			}
+			if err := c.uploads.ReplaceImage(imageData, filename); err != nil {
+				c.log.Error("Ошибка замены изображения", slog.String("operation", op), slog.String("error", err.Error()))
+				http.Error(w, "failed to save image", http.StatusInternalServerError)
+				return
+			}
+		}
+	} else if strings.HasPrefix(contentType, "application/json") {
+		if err := json.NewDecoder(r.Body).Decode(&gameData); err != nil {
+			c.log.Error("Ошибка парсинга JSON тела", slog.String("operation", op), slog.String("error", err.Error()))
+			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			return
+		}
+		if img, ok := gameData["image"].(string); ok {
+			filename = img
+		}
+	} else {
+		http.Error(w, "invalid Content-Type", http.StatusBadRequest)
 		return
 	}
 
-	gameID, err := strconv.ParseInt(r.FormValue("id"), 10, 64)
+	var err error
+	gameID, err := strconv.ParseInt(getFormValue(r, gameData, "id"), 10, 64)
 	if err != nil {
 		c.log.Error("Ошибка парсинга ID игры", slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, "invalid game id", http.StatusBadRequest)
 		return
 	}
 
-	priority, err := strconv.Atoi(r.FormValue("priority"))
+	priority, err := strconv.Atoi(getFormValue(r, gameData, "priority"))
 	if err != nil {
 		priority = 0
 	}
@@ -399,7 +434,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	var createdAt *time.Time
-	if createdAtStr := r.FormValue("created_at"); createdAtStr != "" {
+	if createdAtStr := getFormValue(r, gameData, "created_at"); createdAtStr != "" {
 		t, err := time.Parse(time.RFC3339, createdAtStr)
 		if err != nil {
 			c.log.Error("Ошибка парсинга даты создания", slog.String("operation", op), slog.String("error", err.Error()))
@@ -409,35 +444,18 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		createdAt = &t
 	}
 
-	filename := r.FormValue("image") // старое имя (можем заменить, если будет файл)
-	file, _, err := r.FormFile("image")
-	if err == nil {
-		defer file.Close()
-
-		imageData, err := io.ReadAll(file)
-		if err != nil {
-			c.log.Error("Ошибка чтения изображения", slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, "failed to read image", http.StatusBadRequest)
-			return
-		}
-		if err := c.uploads.ReplaceImage(imageData, filename); err != nil {
-			c.log.Error("Ошибка замены изображения", slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, "failed to save image", http.StatusInternalServerError)
-			return
-		}
-	}
 	timeNow := time.Now()
 
 	game := &models.Game{
 		ID:        gameID,
-		Title:     r.FormValue("title"),
-		Preambula: r.FormValue("preambula"),
+		Title:     getFormValue(r, gameData, "title"),
+		Preambula: getFormValue(r, gameData, "preambula"),
 		Image:     filename,
-		Developer: r.FormValue("developer"),
-		Publisher: r.FormValue("publisher"),
-		Year:      r.FormValue("year"),
-		Genre:     r.FormValue("genre"),
-		URL:       r.FormValue("url"),
+		Developer: getFormValue(r, gameData, "developer"),
+		Publisher: getFormValue(r, gameData, "publisher"),
+		Year:      getFormValue(r, gameData, "year"),
+		Genre:     getFormValue(r, gameData, "genre"),
+		URL:       getFormValue(r, gameData, "url"),
 		CreatedAt: createdAt,
 		UpdatedAt: &timeNow,
 	}
@@ -453,7 +471,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		UserID:   userID,
 		GameID:   res.ID,
 		Priority: priority,
-		Status:   models.GameStatus(r.FormValue("status")),
+		Status:   models.GameStatus(getFormValue(r, gameData, "status")),
 	}
 
 	if err := c.service.UpdateUserGame(userGame); err != nil {
@@ -469,6 +487,22 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrUpdate.Error(), http.StatusInternalServerError)
 		return
 	}
+}
+
+func getFormValue(r *http.Request, gameData map[string]interface{}, key string) string {
+	contentType := r.Header.Get("Content-Type")
+
+	if strings.HasPrefix(contentType, "multipart/form-data") {
+		return r.FormValue(key)
+	} else if strings.HasPrefix(contentType, "application/json") {
+		if val, ok := gameData[key]; ok {
+			if str, ok := val.(string); ok {
+				return str
+			}
+		}
+		return ""
+	}
+	return ""
 }
 
 func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
