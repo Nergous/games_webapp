@@ -22,6 +22,7 @@ import (
 	"games_webapp/internal/storage/uploads"
 
 	"github.com/PuerkitoBio/goquery"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
@@ -119,6 +120,7 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetAllPaginatedForUser"
+	fmt.Println("PENIS")
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
@@ -132,6 +134,8 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		page = 1
 	}
 
+	fmt.Println("PENIS 2")
+
 	pageSize, err := strconv.Atoi(query.Get("page_size"))
 	if err != nil || pageSize < 1 {
 		pageSize = 10
@@ -139,7 +143,10 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		pageSize = 100
 	}
 
+	fmt.Println("PENIS 3")
+
 	games, total, err := c.service.GetAllPaginatedForUser(userID, page, pageSize)
+	fmt.Println("PENIS 4")
 	if err != nil {
 		c.log.Error(
 			ErrGetGames.Error(),
@@ -148,6 +155,8 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
+
+	fmt.Println("PENIS 4")
 
 	totalPages := total / pageSize
 	if total%pageSize != 0 {
@@ -161,6 +170,8 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		Size:    pageSize,
 		Data:    games,
 	}
+
+	fmt.Println("PENIS 5")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -376,6 +387,14 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	gameIDStr := chi.URLParam(r, "id")
+	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	if err != nil {
+		c.log.Error(ErrUpdate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdate.Error(), http.StatusBadRequest)
+		return
+	}
+
 	contentType := r.Header.Get("Content-Type")
 	var filename string
 	var gameData map[string]interface{}
@@ -413,14 +432,6 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		}
 	} else {
 		http.Error(w, "invalid Content-Type", http.StatusBadRequest)
-		return
-	}
-
-	var err error
-	gameID, err := strconv.ParseInt(getFormValue(r, gameData, "id"), 10, 64)
-	if err != nil {
-		c.log.Error("Ошибка парсинга ID игры", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "invalid game id", http.StatusBadRequest)
 		return
 	}
 
@@ -697,7 +708,6 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 
 	var resultMap map[string]string
 	var err error
-	url := ""
 
 	if source != "Wiki" && source != "Steam" {
 		return nil, errors.New("invalid source")
@@ -727,6 +737,8 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 		imageFilename = ""
 	}
 
+	fmt.Println("ALMOST THERE")
+
 	timeNow := time.Now()
 	game := &models.Game{
 		Title:     resultMap["title"],
@@ -736,7 +748,7 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 		Publisher: resultMap["publisher"],
 		Year:      resultMap["year"],
 		Genre:     resultMap["genre"],
-		URL:       url,
+		URL:       resultMap["url"],
 		CreatedAt: &timeNow,
 		UpdatedAt: &timeNow,
 	}
@@ -791,6 +803,7 @@ func (c *GameController) processWiki(name string) (map[string]string, error) {
 		return nil, fmt.Errorf("game already exists: %s", url)
 	}
 
+	fmt.Printf("Im here!")
 	resultMap, err := c.parseGameWiki(url)
 	if err != nil {
 		c.log.Error(
@@ -800,6 +813,8 @@ func (c *GameController) processWiki(name string) (map[string]string, error) {
 			slog.String("url", url))
 		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
 	}
+
+	fmt.Println("COOL!")
 
 	return resultMap, nil
 }
@@ -941,6 +956,7 @@ func (c *GameController) parseGameSteam(url string) (map[string]string, error) {
 	result["developer"] = parseField(detailsText, `Developer:\s*([^ ]+.*?)Publisher:`)
 	result["publisher"] = parseField(detailsText, `Publisher:\s*([^ ]+.*?)Release Date:`)
 	result["release_date"] = parseField(detailsText, `Release Date:\s*([^ ]+.*?)$`)
+	result["url"] = url
 
 	// Извлекаем год из даты
 	if year := regexp.MustCompile(`(20\d{2}|19\d{2})`).FindString(result["release_date"]); year != "" {
@@ -1109,17 +1125,7 @@ func (c *GameController) parseGameWiki(url string) (map[string]string, error) {
 		return true // продолжать
 	})
 
-	if title == "" || firstParagraph == "" || imgFull == "" || developer == "" || publisher == "" || year == "" || genre == "" {
-		fmt.Println("----------------------")
-		fmt.Println("no data")
-		fmt.Println("title:", title)
-		fmt.Println("firstParagraph:", firstParagraph)
-		fmt.Println("imgFull:", imgFull)
-		fmt.Println("developer:", developer)
-		fmt.Println("publisher:", publisher)
-		fmt.Println("year:", year)
-		fmt.Println("genre:", genre)
-		fmt.Println("----------------------")
+	if title == "" || firstParagraph == "" || imgFull == "" || developer == "" || publisher == "" || year == "" || genre == "" || url == "" {
 		return nil, ErrParsing
 	}
 
@@ -1131,6 +1137,7 @@ func (c *GameController) parseGameWiki(url string) (map[string]string, error) {
 		"publisher": publisher,
 		"year":      year,
 		"genre":     genre,
+		"url":       url,
 	}
 
 	return resultMap, nil

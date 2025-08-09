@@ -44,15 +44,15 @@ func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) (
 	offset := (page - 1) * pageSize
 
 	if err := s.storage.DB.
-		Model(&models.Game{}).
-		Joins("JOIN user_games ON user_games.game_id = games.id").
-		Where("user_games.user_id = ?", userID).
+		Model(&models.UserGames{}).
+		Where("user_id = ?", userID).
 		Count(&count).Error; err != nil {
 		return nil, 0, fmt.Errorf("%s: %w", op, err)
 	}
 
 	if err := s.storage.DB.
 		Table("games").
+		Select("games.*, user_games.priority, user_games.status").
 		Joins("JOIN user_games ON user_games.game_id = games.id").
 		Where("user_games.user_id = ?", userID).
 		Offset(offset).
@@ -60,8 +60,6 @@ func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) (
 		Find(&results).Error; err != nil {
 		return nil, 0, fmt.Errorf("%s: %w", op, err)
 	}
-
-	
 
 	return results, int(count), nil
 }
@@ -199,6 +197,8 @@ func (s *GameService) Delete(id int64) error {
 
 func (s *GameService) GetGameByURL(url string) error {
 	const op = "services.games.GetGameByURL"
+
+	fmt.Printf("url: %s \n op: %s\n", url, op)
 
 	if url == "" {
 		return fmt.Errorf("%s: url is empty", op)
