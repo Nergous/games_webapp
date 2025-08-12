@@ -399,15 +399,16 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
-		filename, err := c.service.GetByID(gameID)
-		if err != nil {
-			c.log.Error("Ошибка получения игры", slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, "failed to get game", http.StatusInternalServerError)
-			return
-		}
-		file, _, err := r.FormFile("image")
+		file, h, err := r.FormFile("image")
 		if err == nil {
 			defer file.Close()
+
+			oldFilename, err := c.service.GetByID(gameID)
+			if err != nil {
+				c.log.Error("Ошибка получения игры", slog.String("operation", op), slog.String("error", err.Error()))
+				http.Error(w, "failed to get game", http.StatusInternalServerError)
+				return
+			}
 
 			imageData, err := io.ReadAll(file)
 			if err != nil {
@@ -415,7 +416,13 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "failed to read image", http.StatusBadRequest)
 				return
 			}
-			if err := c.uploads.ReplaceImage(imageData, filename.Image); err != nil {
+
+			// get filename
+
+			filename := h.Filename
+			filename = generateImageFilename(filename, h.Header.Get("Content-Type"))
+
+			if err := c.uploads.ReplaceImage(imageData, oldFilename.Image, filename); err != nil {
 				c.log.Error("Ошибка замены изображения", slog.String("operation", op), slog.String("error", err.Error()))
 				http.Error(w, "failed to save image", http.StatusInternalServerError)
 				return
@@ -1203,8 +1210,11 @@ func generateImageFilename(url, contentType string) string {
 		ext = ".webp"
 	}
 
+	// Get current timestamp
+	unique_string := time.Now().Format("20060102150405") + url
+
 	// Создаем хэш от URL для уникального имени
-	hash := sha256.Sum256([]byte(url))
+	hash := sha256.Sum256([]byte(unique_string))
 	return fmt.Sprintf("%x%s", hash[:8], ext)
 }
 
