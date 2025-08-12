@@ -756,7 +756,7 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 	timeNow := time.Now()
 	game := &models.Game{
 		Title:     resultMap["title"],
-		Preambula: resultMap["preambula"],
+		Preambula: resultMap["description"],
 		Image:     imageFilename,
 		Developer: resultMap["developer"],
 		Publisher: resultMap["publisher"],
