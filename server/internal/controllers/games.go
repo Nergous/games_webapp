@@ -50,11 +50,6 @@ type RequestData struct {
 	Games []RequestGame `json:"games"`
 }
 
-// some stupid comment 235
-// penis 2355464
-// again penis
-// da blyat ya zaebalsa
-
 type CreateGameRequest struct {
 	Title     string            `json:"title"`
 	Preambula string            `json:"preambula"`
@@ -125,7 +120,6 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetAllPaginatedForUser"
-	fmt.Println("PENIS")
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
@@ -139,8 +133,6 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		page = 1
 	}
 
-	fmt.Println("PENIS 2")
-
 	pageSize, err := strconv.Atoi(query.Get("page_size"))
 	if err != nil || pageSize < 1 {
 		pageSize = 10
@@ -148,10 +140,7 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		pageSize = 100
 	}
 
-	fmt.Println("PENIS 3")
-
 	games, total, err := c.service.GetAllPaginatedForUser(userID, page, pageSize)
-	fmt.Println("PENIS 4")
 	if err != nil {
 		c.log.Error(
 			ErrGetGames.Error(),
@@ -160,8 +149,6 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
-
-	fmt.Println("PENIS 4")
 
 	totalPages := total / pageSize
 	if total%pageSize != 0 {
@@ -175,8 +162,6 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 		Size:    pageSize,
 		Data:    games,
 	}
-
-	fmt.Println("PENIS 5")
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
@@ -512,8 +497,15 @@ func getFormValue(r *http.Request, gameData map[string]interface{}, key string) 
 		return r.FormValue(key)
 	} else if strings.HasPrefix(contentType, "application/json") {
 		if val, ok := gameData[key]; ok {
-			if str, ok := val.(string); ok {
-				return str
+			switch v := val.(type) {
+			case string:
+				return v
+			case float64: // JSON numbers are usually unmarshalled as float64
+				return strconv.FormatFloat(v, 'f', -1, 64)
+			case int:
+				return strconv.Itoa(v)
+			default:
+				return fmt.Sprint(v)
 			}
 		}
 		return ""
