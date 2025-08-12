@@ -419,7 +419,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 
 			// get filename
 
-			filename := h.Filename
+			filename = h.Filename
 			filename = generateImageFilename(filename, h.Header.Get("Content-Type"))
 
 			if err := c.uploads.ReplaceImage(imageData, oldFilename.Image, filename); err != nil {
