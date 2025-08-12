@@ -50,7 +50,7 @@ type RequestData struct {
 	Games []RequestGame `json:"games"`
 }
 
-// some stupid comment 23
+// some stupid comment 235
 
 type CreateGameRequest struct {
 	Title     string            `json:"title"`
