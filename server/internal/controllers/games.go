@@ -932,11 +932,34 @@ func (c *GameController) findGameSteam(name string) (string, error) {
 	return firstLink, nil
 }
 
-func (c *GameController) parseGameSteam(url string) (map[string]string, error) {
-	resp, err := http.Get(url)
+func (c *GameController) parseGameSteam(gameUrl string) (map[string]string, error) {
+	u, err := url.Parse(gameUrl)
 	if err != nil {
-		return nil, fmt.Errorf("failed to get Steam page: %w", err)
+		return nil, fmt.Errorf("failed to parse URL: %w", err)
 	}
+
+	q := u.Query()
+	q.Set("l", "russian")
+	u.RawQuery = q.Encode()
+
+	req, err := http.NewRequest("GET", u.String(), nil)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create request: %w", err)
+	}
+
+	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
+	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4")
+
+	req.AddCookie(&http.Cookie{Name: "Steam_Language", Value: "russian"})
+	req.AddCookie(&http.Cookie{Name: "birthtime", Value: "473385601"})
+	req.AddCookie(&http.Cookie{Name: "wants_mature_content", Value: "1"})
+
+	client := &http.Client{Timeout: 3 * time.Second}
+	resp, err := client.Do(req)
+	if err != nil {
+		return nil, fmt.Errorf("failed to send request: %w", err)
+	}
+
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
@@ -965,12 +988,12 @@ func (c *GameController) parseGameSteam(url string) (map[string]string, error) {
 		return ""
 	}
 
-	result["title"] = parseField(detailsText, `Title:\s*([^ ]+.*?)Genre:`)
-	result["genre"] = parseField(detailsText, `Genre:\s*([^ ]+.*?)Developer:`)
-	result["developer"] = parseField(detailsText, `Developer:\s*([^ ]+.*?)Publisher:`)
-	result["publisher"] = parseField(detailsText, `Publisher:\s*([^ ]+.*?)Release Date:`)
-	result["release_date"] = parseField(detailsText, `Release Date:\s*([^ ]+.*?)$`)
-	result["url"] = url
+	result["title"] = parseField(detailsText, `Название:\s*([^ ]+.*?)Genre:`)
+	result["genre"] = parseField(detailsText, `Жанр:\s*([^ ]+.*?)Developer:`)
+	result["developer"] = parseField(detailsText, `Разработчик:\s*([^ ]+.*?)Publisher:`)
+	result["publisher"] = parseField(detailsText, `Издатель:\s*([^ ]+.*?)Release Date:`)
+	result["release_date"] = parseField(detailsText, `Дата выхода:\s*([^ ]+.*?)$`)
+	result["url"] = u.String()
 
 	// Извлекаем год из даты
 	if year := regexp.MustCompile(`(20\d{2}|19\d{2})`).FindString(result["release_date"]); year != "" {
