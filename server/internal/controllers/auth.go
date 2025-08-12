@@ -126,15 +126,6 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	http.SetCookie(w, &http.Cookie{
-		Name:     "auth_token",
-		Value:    "token",
-		Path:     "/",
-		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
-	})
-
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(token); err != nil {
 		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
