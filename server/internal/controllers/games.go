@@ -39,6 +39,10 @@ type GameServicer interface {
 	CreateUserGame(ug *models.UserGames) error
 	UpdateUserGame(ug *models.UserGames) error
 	DeleteUserGame(userID, gameID int64) error
+	GetFinishedGames(userID int64) (int, error)
+	GetPlayingGames(userID int64) (int, error)
+	GetPlannedGames(userID int64) (int, error)
+	GetDroppedGames(userID int64) (int, error)
 }
 
 type RequestGame struct {
@@ -1196,4 +1200,56 @@ func generateImageFilename(url, contentType string) string {
 	// Создаем хэш от URL для уникального имени
 	hash := sha256.Sum256([]byte(url))
 	return fmt.Sprintf("%x%s", hash[:8], ext)
+}
+
+type GameStats struct {
+	Finished int `json:"finished"`
+	Playing  int `json:"playing"`
+	Planned  int `json:"planned"`
+	Dropped  int `json:"dropped"`
+}
+
+func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok || userID <= 0 {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+
+	gs := GameStats{
+		Finished: 0,
+		Playing:  0,
+		Planned:  0,
+		Dropped:  0,
+	}
+
+	finished, err := c.service.GetFinishedGames(userID)
+	if err != nil {
+		return
+	}
+	playing, err := c.service.GetPlayingGames(userID)
+	if err != nil {
+		return
+	}
+	planned, err := c.service.GetPlannedGames(userID)
+	if err != nil {
+		return
+	}
+
+	dropped, err := c.service.GetDroppedGames(userID)
+	if err != nil {
+		return
+	}
+
+	gs.Finished = finished
+	gs.Playing = playing
+	gs.Planned = planned
+	gs.Dropped = dropped
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(gs); err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		return
+	}
 }

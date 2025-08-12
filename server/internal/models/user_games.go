@@ -6,6 +6,7 @@ const (
 	StatusPlanned  GameStatus = "planned"
 	StatusPlaying  GameStatus = "playing"
 	StatusFinished GameStatus = "finished"
+	StatusDropped  GameStatus = "dropped"
 )
 
 type UserGames struct {

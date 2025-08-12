@@ -267,3 +267,63 @@ func (s *GameService) DeleteUserGame(userID, gameID int64) error {
 
 	return nil
 }
+
+func (s *GameService) GetFinishedGames(userID int64) (int, error) {
+	const op = "services.games.GetFinishedGames"
+
+	var count int64
+	if err := s.storage.DB.
+		Model(&models.UserGames{}).
+		Where("user_id = ?", userID).
+		Where("status = ?", "finished").
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return int(count), nil
+}
+
+func (s *GameService) GetPlayingGames(userID int64) (int, error) {
+	const op = "services.games.GetPlayingGames"
+
+	var count int64
+	if err := s.storage.DB.
+		Model(&models.UserGames{}).
+		Where("user_id = ?", userID).
+		Where("status = ?", "playing").
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return int(count), nil
+}
+
+func (s *GameService) GetPlannedGames(userID int64) (int, error) {
+	const op = "services.games.GetPlannedGames"
+
+	var count int64
+	if err := s.storage.DB.
+		Model(&models.UserGames{}).
+		Where("user_id = ?", userID).
+		Where("status = ?", "planned").
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return int(count), nil
+}
+
+func (s *GameService) GetDroppedGames(userID int64) (int, error) {
+	const op = "services.games.GetDroppedGames"
+
+	var count int64
+	if err := s.storage.DB.
+		Model(&models.UserGames{}).
+		Where("user_id = ?", userID).
+		Where("status = ?", "dropped").
+		Count(&count).Error; err != nil {
+		return 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return int(count), nil
+}
