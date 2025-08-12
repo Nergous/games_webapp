@@ -988,10 +988,10 @@ func (c *GameController) parseGameSteam(gameUrl string) (map[string]string, erro
 		return ""
 	}
 
-	result["title"] = parseField(detailsText, `Название:\s*([^ ]+.*?)Genre:`)
-	result["genre"] = parseField(detailsText, `Жанр:\s*([^ ]+.*?)Developer:`)
-	result["developer"] = parseField(detailsText, `Разработчик:\s*([^ ]+.*?)Publisher:`)
-	result["publisher"] = parseField(detailsText, `Издатель:\s*([^ ]+.*?)Release Date:`)
+	result["title"] = parseField(detailsText, `Название:\s*([^ ]+.*?)Жанр:`)
+	result["genre"] = parseField(detailsText, `Жанр:\s*([^ ]+.*?)Разработчик:`)
+	result["developer"] = parseField(detailsText, `Разработчик:\s*([^ ]+.*?)Издатель:`)
+	result["publisher"] = parseField(detailsText, `Издатель:\s*([^ ]+.*?)Дата выхода:`)
 	result["release_date"] = parseField(detailsText, `Дата выхода:\s*([^ ]+.*?)$`)
 	result["url"] = u.String()
 
