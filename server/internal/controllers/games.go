@@ -398,7 +398,13 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "invalid form data", http.StatusBadRequest)
 			return
 		}
-		filename := r.FormValue("image") // старое имя (можем заменить, если будет файл)
+
+		filename, err := c.service.GetByID(gameID)
+		if err != nil {
+			c.log.Error("Ошибка получения игры", slog.String("operation", op), slog.String("error", err.Error()))
+			http.Error(w, "failed to get game", http.StatusInternalServerError)
+			return
+		}
 		file, _, err := r.FormFile("image")
 		if err == nil {
 			defer file.Close()
@@ -409,7 +415,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, "failed to read image", http.StatusBadRequest)
 				return
 			}
-			if err := c.uploads.ReplaceImage(imageData, filename); err != nil {
+			if err := c.uploads.ReplaceImage(imageData, filename.Image); err != nil {
 				c.log.Error("Ошибка замены изображения", slog.String("operation", op), slog.String("error", err.Error()))
 				http.Error(w, "failed to save image", http.StatusInternalServerError)
 				return
