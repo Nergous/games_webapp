@@ -50,7 +50,7 @@ func SetupRouter(
 				r.Get("/user/info", authController.GetUserInfo)
 				r.Get("/user", gameController.GetAllPaginatedForUser)
 				r.Get("/search", gameController.SearchAllGames)
-				r.Get("/user/search?title={title}", gameController.SearchUserGames)
+				r.Get("/user/search", gameController.SearchUserGames)
 				r.Post("/", gameController.Create)
 				r.Post("/multi", gameController.CreateMultiGamesDB)
 				r.Route("/{id}", func(r chi.Router) {
