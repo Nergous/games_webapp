@@ -31,4 +31,4 @@ server/config/local.yaml
 # .idea/
 # .vscode/
 
-update.sh
+update.bash
