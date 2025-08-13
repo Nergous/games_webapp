@@ -1167,14 +1167,14 @@ func (c *GameController) parseGameWiki(url string) (map[string]string, error) {
 	}
 
 	resultMap := map[string]string{
-		"title":     title,
-		"preambula": firstParagraph,
-		"image":     imgFull,
-		"developer": developer,
-		"publisher": publisher,
-		"year":      year,
-		"genre":     genre,
-		"url":       url,
+		"title":       title,
+		"description": firstParagraph,
+		"image":       imgFull,
+		"developer":   developer,
+		"publisher":   publisher,
+		"year":        year,
+		"genre":       genre,
+		"url":         url,
 	}
 
 	return resultMap, nil
