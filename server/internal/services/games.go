@@ -190,7 +190,7 @@ func (s *GameService) Create(g *models.Game) (*models.Game, error) {
 	return g, nil
 }
 
-func (s *GameService) Update(userID int64, g *models.Game) (*models.Game, error) {
+func (s *GameService) Update(g *models.Game) (*models.Game, error) {
 	const op = "services.games.Update"
 
 	tx := s.storage.DB.Begin()
@@ -204,39 +204,15 @@ func (s *GameService) Update(userID int64, g *models.Game) (*models.Game, error)
 		}
 	}()
 
-	// Проверяем существующую игру
 	var existing models.Game
 	if err := tx.First(&existing, g.ID).Error; err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
-	// Обновляем поля игры
 	if err := tx.Model(&models.Game{}).Where("id = ?", g.ID).Updates(g).Error; err != nil {
 		tx.Rollback()
 		return nil, fmt.Errorf("%s: %w", op, err)
-	}
-
-	// Проверяем есть ли запись в user_games для этого пользователя
-	var userGame models.UserGames
-	err := tx.Where("user_id = ? AND game_id = ?", userID, g.ID).First(&userGame).Error
-	if err != nil {
-		if err == gorm.ErrRecordNotFound {
-			// Если записи нет — создаём
-			newUG := models.UserGames{
-				UserID:   userID,
-				GameID:   g.ID,
-				Priority: 0,                    // по умолчанию
-				Status:   models.StatusPlanned, // по умолчанию
-			}
-			if err := tx.Create(&newUG).Error; err != nil {
-				tx.Rollback()
-				return nil, fmt.Errorf("%s: %w", op, err)
-			}
-		} else {
-			tx.Rollback()
-			return nil, fmt.Errorf("%s: %w", op, err)
-		}
 	}
 
 	if err := tx.Commit().Error; err != nil {
@@ -321,7 +297,10 @@ func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 	const op = "services.games.UpdateUserGame"
 
 	var existing models.UserGames
-	if err := s.storage.DB.Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).First(&existing).Error; err != nil {
+	err := s.storage.DB.Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).First(&existing).Error
+	if errors.Is(err, gorm.ErrRecordNotFound) {
+		return s.CreateUserGame(ug)
+	} else if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
