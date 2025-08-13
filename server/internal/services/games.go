@@ -278,11 +278,10 @@ func (s *GameService) CreateUserGame(ug *models.UserGames) error {
 		ug.UserID,
 		ug.GameID,
 	).First(&existing).Error
-	if err == nil {
-		return nil
-	}
 
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		return fmt.Errorf("%s: %w", op, errors.New("game already exists"))
+	} else if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
