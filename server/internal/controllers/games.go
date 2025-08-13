@@ -557,6 +557,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	}
 
 	existingGame, err := c.service.GetByID(gameID)
+	fmt.Printf("%v", existingGame)
 	if err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
