@@ -558,7 +558,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Получаем игру по ID
-	game, err := c.service.GetByID(idInt)
+	_, err = c.service.GetByID(idInt)
 	if err != nil {
 		c.log.Error(
 			"Не удалось получить игру для удаления",
@@ -570,26 +570,26 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Удаляем файл изображения
-	if err := c.uploads.DeleteImage(game.Image); err != nil {
-		// Логируем, но не прерываем выполнение — игра всё равно будет удалена
-		c.log.Error(
-			"Ошибка удаления изображения",
-			slog.String("operation", op),
-			slog.String("filename", game.Image),
-			slog.String("error", err.Error()))
-	}
+	// if err := c.uploads.DeleteImage(game.Image); err != nil {
+	// 	// Логируем, но не прерываем выполнение — игра всё равно будет удалена
+	// 	c.log.Error(
+	// 		"Ошибка удаления изображения",
+	// 		slog.String("operation", op),
+	// 		slog.String("filename", game.Image),
+	// 		slog.String("error", err.Error()))
+	// }
 
-	// Удаляем запись игры
-	err = c.service.Delete(idInt)
-	if err != nil {
-		c.log.Error(
-			ErrDelete.Error(),
-			slog.String("operation", op),
-			slog.String("id", id),
-			slog.String("error", err.Error()))
-		http.Error(w, ErrDelete.Error(), http.StatusInternalServerError)
-		return
-	}
+	// // Удаляем запись игры
+	// err = c.service.Delete(idInt)
+	// if err != nil {
+	// 	c.log.Error(
+	// 		ErrDelete.Error(),
+	// 		slog.String("operation", op),
+	// 		slog.String("id", id),
+	// 		slog.String("error", err.Error()))
+	// 	http.Error(w, ErrDelete.Error(), http.StatusInternalServerError)
+	// 	return
+	// }
 	err = c.service.DeleteUserGame(userID, idInt)
 	if err != nil {
 		c.log.Error(
