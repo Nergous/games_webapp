@@ -278,26 +278,31 @@ func (s *GameService) CreateUserGame(ug *models.UserGames) error {
 		ug.UserID,
 		ug.GameID,
 	).First(&existing).Error
-
+	fmt.Println("ТУТАЧКИ")
 	if !errors.Is(err, gorm.ErrRecordNotFound) {
+		fmt.Println("ПРОЕБАЛИ")
 		return fmt.Errorf("%s: %w", op, errors.New("game already exists"))
 	} else if err != nil {
+		fmt.Println("ТОЖЕ ПРОЕБАЛИ")
 		return fmt.Errorf("%s: %w", op, err)
 	}
 
 	if err := s.storage.DB.Create(ug).Error; err != nil {
+		fmt.Println("НУ ПИЗДЕЦ")
 		return fmt.Errorf("%s: %w", op, err)
 	}
-
+	fmt.Println("ВСЁ НОРМ")
 	return nil
 }
 
 func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 	const op = "services.games.UpdateUserGame"
+	fmt.Println("ОБНОВЛЕНИЕ")
 
 	var existing models.UserGames
 	err := s.storage.DB.Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).First(&existing).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
+		fmt.Println("СОЗДАНИЕ")
 		return s.CreateUserGame(ug)
 	} else if err != nil {
 		return fmt.Errorf("%s: %w", op, err)
