@@ -577,7 +577,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	if userID != existingGame.Creator {
 		userGame = models.UserGames{
 			UserID:   userID,
-			GameID:   userID,
+			GameID:   existingGame.ID,
 			Priority: 0,
 			Status:   models.GameStatus(request.Status),
 		}
