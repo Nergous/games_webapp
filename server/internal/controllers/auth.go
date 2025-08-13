@@ -92,7 +92,9 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	userID, err := c.client.Register(r.Context(), request.Email, request.Password, request.SteamURL, imageFilename)
+	cleanedEmail := strings.ToLower(strings.TrimSpace(request.Email))
+
+	userID, err := c.client.Register(r.Context(), cleanedEmail, request.Password, request.SteamURL, imageFilename)
 	if err != nil {
 		c.log.Error("sso.Register failed", slog.String("error", err.Error()))
 		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
@@ -122,7 +124,9 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	token, err := c.client.Login(r.Context(), req.Email, req.Password, req.AppId)
+	cleanedEmail := strings.ToLower(strings.TrimSpace(req.Email))
+
+	token, err := c.client.Login(r.Context(), cleanedEmail, req.Password, req.AppId)
 	if err != nil {
 		c.log.Error("sso.Login failed", slog.String("error", err.Error()))
 		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
