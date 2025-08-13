@@ -32,12 +32,12 @@ func (s *GameService) GetGamesPaginated(userID int64, search, sortBy, sortOrder 
 
 	offset := (page - 1) * pageSize
 
-	db := s.storage.DB.Table("games")
+	db := s.storage.DB.Table("games").
+		Select("games.*, COALESCE(user_games.priority, 0) as priority, COALESCE(user_games.status, '') as status").
+		Joins("LEFT JOIN user_games ON user_games.game_id = games.id AND user_games.user_id = ?", userID)
 
 	if search != "" {
-		db = db.Where("games.title LIKE ?", "%"+search+"%").
-			Joins("LEFT JOIN user_games ON user_games.game_id = games.id").
-			Where("user_games.user_id = ?", userID)
+		db = db.Where("games.title LIKE ?", "%"+search+"%")
 	}
 
 	if err := db.Count(&count).Error; err != nil {
@@ -62,7 +62,7 @@ func (s *GameService) GetGamesPaginated(userID int64, search, sortBy, sortOrder 
 		Order(fmt.Sprintf("%s %s", sortField, sortOrder)).
 		Offset(offset).
 		Limit(pageSize).
-		Find(&results).Error; err != nil {
+		Scan(&results).Error; err != nil {
 		return nil, 0, fmt.Errorf("%s: %w", op, err)
 	}
 
