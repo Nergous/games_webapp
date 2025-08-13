@@ -25,10 +25,10 @@ import (
 
 type GameServicer interface {
 	GetAll() ([]models.Game, error)
-	GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.UserGameResponse, int, error)
 	GetByID(id int64) (*models.Game, error)
 	SearchAllGames(query string) ([]models.Game, error)
-	SearchUserGames(userID int64, query string) ([]models.Game, error)
+	GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
+
 	Create(game *models.Game) (*models.Game, error)
 	Update(game *models.Game) (*models.Game, error)
 	Delete(id int64) error
@@ -120,61 +120,6 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.Request) {
-	const op = "controllers.games.GetAllPaginatedForUser"
-
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
-	if !ok {
-		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
-		return
-	}
-
-	query := r.URL.Query()
-	page, err := strconv.Atoi(query.Get("page"))
-	if err != nil || page < 1 {
-		page = 1
-	}
-
-	pageSize, err := strconv.Atoi(query.Get("page_size"))
-	if err != nil || pageSize < 1 {
-		pageSize = 10
-	} else if pageSize > 100 {
-		pageSize = 100
-	}
-
-	games, total, err := c.service.GetAllPaginatedForUser(userID, page, pageSize)
-	if err != nil {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("operation", op),
-			slog.String("error", err.Error()))
-		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
-		return
-	}
-
-	totalPages := total / pageSize
-	if total%pageSize != 0 {
-		totalPages++
-	}
-
-	response := PaginationResponse{
-		Total:   total,
-		Pages:   totalPages,
-		Current: page,
-		Size:    pageSize,
-		Data:    games,
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
-		return
-	}
-}
-
 func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetByID"
 	parts := strings.Split(r.URL.Path, "/")
@@ -240,31 +185,64 @@ func (c *GameController) SearchAllGames(w http.ResponseWriter, r *http.Request) 
 	}
 }
 
-func (c *GameController) SearchUserGames(w http.ResponseWriter, r *http.Request) {
-	const op = "controllers.games.SearchUserGames"
-
+func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
-	query := r.URL.Query().Get("title")
-	if query == "" {
-		http.Error(w, ErrMissingTitle.Error(), http.StatusBadRequest)
-		return
+	query := r.URL.Query()
+
+	var status *models.GameStatus
+	if s := query.Get("status"); s != "" {
+		st := models.GameStatus(s)
+		status = &st
 	}
 
-	games, err := c.service.SearchUserGames(userID, query)
+	search := strings.TrimSpace(query.Get("search"))
+
+	sortBy := query.Get("sort_by")
+	sortOrder := query.Get("sort_order")
+
+	page, _ := strconv.Atoi(query.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+
+	pageSize, _ := strconv.Atoi(query.Get("page_size"))
+	if pageSize < 1 {
+		pageSize = 10
+	} else if pageSize > 100 {
+		pageSize = 100
+	}
+
+	games, total, err := c.service.GetUserGames(userID, status, search, sortBy, sortOrder, page, pageSize)
 	if err != nil {
-		c.log.Error("ошибка поиска", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrSearching.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrGetUserGames.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetUserGames.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	if err := json.NewEncoder(w).Encode(games); err != nil {
-		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+	totalPages := total / pageSize
+	if total%pageSize != 0 {
+		totalPages++
+	}
+
+	response := PaginationResponse{
+		Total:   total,
+		Pages:   totalPages,
+		Current: page,
+		Size:    pageSize,
+		Data:    games,
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		c.log.Error(ErrGetUserGames.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetUserGames.Error(), http.StatusInternalServerError)
 		return
 	}
 }

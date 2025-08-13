@@ -1,0 +1,571 @@
+basePath: /api
+definitions:
+  games_webapp_internal_models.Game:
+    properties:
+      created_at:
+        type: string
+      creator:
+        type: integer
+      developer:
+        type: string
+      genre:
+        type: string
+      id:
+        type: integer
+      image:
+        type: string
+      preambula:
+        type: string
+      publisher:
+        type: string
+      title:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+      year:
+        type: string
+    type: object
+  games_webapp_internal_models.GameStatus:
+    enum:
+    - planned
+    - playing
+    - finished
+    - dropped
+    type: string
+    x-enum-varnames:
+    - StatusPlanned
+    - StatusPlaying
+    - StatusFinished
+    - StatusDropped
+  games_webapp_internal_models.UserGameResponse:
+    properties:
+      created_at:
+        type: string
+      creator:
+        type: integer
+      developer:
+        type: string
+      genre:
+        type: string
+      id:
+        type: integer
+      image:
+        type: string
+      preambula:
+        type: string
+      priority:
+        type: integer
+      publisher:
+        type: string
+      status:
+        $ref: '#/definitions/games_webapp_internal_models.GameStatus'
+      title:
+        type: string
+      updated_at:
+        type: string
+      url:
+        type: string
+      year:
+        type: string
+    type: object
+  internal_controllers.GameStats:
+    properties:
+      dropped:
+        type: integer
+      finished:
+        type: integer
+      planned:
+        type: integer
+      playing:
+        type: integer
+    type: object
+  internal_controllers.MultiGameResponse:
+    properties:
+      errors:
+        items:
+          type: string
+        type: array
+      success:
+        items:
+          $ref: '#/definitions/games_webapp_internal_models.Game'
+        type: array
+    type: object
+  internal_controllers.PaginationResponse:
+    properties:
+      current:
+        description: Текущая страница
+        type: integer
+      data:
+        items:
+          $ref: '#/definitions/games_webapp_internal_models.UserGameResponse'
+        type: array
+      pages:
+        description: Общее кол-во страниц
+        type: integer
+      size:
+        description: Количество элементов на странице
+        type: integer
+      total:
+        description: Общее кол-во элементов
+        type: integer
+    type: object
+  internal_controllers.RequestData:
+    properties:
+      games:
+        items:
+          $ref: '#/definitions/internal_controllers.RequestGame'
+        type: array
+    type: object
+  internal_controllers.RequestGame:
+    properties:
+      name:
+        type: string
+      source:
+        type: string
+    type: object
+  internal_controllers.UpdateGameRequest:
+    properties:
+      created_at:
+        type: string
+      creator:
+        type: integer
+      developer:
+        type: string
+      genre:
+        type: string
+      id:
+        type: integer
+      image:
+        type: string
+      preambula:
+        type: string
+      priority:
+        type: integer
+      publisher:
+        type: string
+      status:
+        $ref: '#/definitions/games_webapp_internal_models.GameStatus'
+      title:
+        type: string
+      url:
+        type: string
+      year:
+        type: string
+    type: object
+host: https://games.nergous.ru
+info:
+  contact:
+    email: Nergous6@yandex.ru
+    name: Nergous
+  description: API для управления библиотекой игр пользователей
+  title: Game WebApp API
+  version: "1.0"
+paths:
+  /games/:
+    get:
+      description: Возвращает список всех игр без фильтрации и пагинации
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/games_webapp_internal_models.Game'
+            type: array
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить все игры
+      tags:
+      - games
+    post:
+      consumes:
+      - multipart/form-data
+      description: Создает новую игру с изображением и добавляет запись о приоритете
+        для пользователя
+      parameters:
+      - description: Название игры
+        in: formData
+        name: title
+        required: true
+        type: string
+      - description: Преамбула игры
+        in: formData
+        name: preambula
+        type: string
+      - description: Разработчик
+        in: formData
+        name: developer
+        type: string
+      - description: Издатель
+        in: formData
+        name: publisher
+        type: string
+      - description: Год выпуска
+        in: formData
+        name: year
+        type: string
+      - description: Жанр
+        in: formData
+        name: genre
+        type: string
+      - description: URL игры
+        in: formData
+        name: url
+        type: string
+      - description: Приоритет (0-10)
+        in: formData
+        name: priority
+        type: integer
+      - description: Изображение игры
+        in: formData
+        name: image
+        required: true
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/games_webapp_internal_models.Game'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Создать новую игру
+      tags:
+      - games
+  /games/{id}/:
+    delete:
+      description: Удаляет игру и запись пользователя. Только создатель игры или администратор
+        могут удалять игру. Удаляет также изображение игры.
+      parameters:
+      - description: ID игры
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Успешно удалено
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "400":
+          description: Неверный ID или URL
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Не авторизован
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "404":
+          description: Игра не найдена
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка удаления
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Удалить игру
+      tags:
+      - games
+    get:
+      description: Возвращает детальную информацию об игре по её ID
+      parameters:
+      - description: ID игры
+        in: path
+        name: id
+        required: true
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/games_webapp_internal_models.Game'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить игру по ID
+      tags:
+      - games
+    put:
+      consumes:
+      - application/json
+      - multipart/form-data
+      description: Обновляет данные игры, включая приоритет и статус пользователя.
+        Поддерживает JSON или multipart/form-data (для изменения изображения)
+      parameters:
+      - description: ID игры
+        in: path
+        name: id
+        required: true
+        type: integer
+      - description: Данные игры для обновления (JSON)
+        in: body
+        name: game
+        schema:
+          $ref: '#/definitions/internal_controllers.UpdateGameRequest'
+      - description: Название игры
+        in: formData
+        name: title
+        type: string
+      - description: Преамбула игры
+        in: formData
+        name: preambula
+        type: string
+      - description: Разработчик
+        in: formData
+        name: developer
+        type: string
+      - description: Издатель
+        in: formData
+        name: publisher
+        type: string
+      - description: Год выпуска
+        in: formData
+        name: year
+        type: string
+      - description: Жанр
+        in: formData
+        name: genre
+        type: string
+      - description: URL игры
+        in: formData
+        name: url
+        type: string
+      - description: Статус пользователя (planned, playing, finished, dropped)
+        in: formData
+        name: status
+        type: string
+      - description: Приоритет (0-10)
+        in: formData
+        name: priority
+        type: integer
+      - description: Новое изображение игры
+        in: formData
+        name: image
+        type: file
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/games_webapp_internal_models.Game'
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Обновить игру
+      tags:
+      - games
+  /games/multi:
+    post:
+      consumes:
+      - application/json
+      description: Создает сразу несколько игр в базе. Максимум 100 игр за один запрос.
+        Выполняется параллельно.
+      parameters:
+      - description: Список игр для создания
+        in: body
+        name: request
+        required: true
+        schema:
+          $ref: '#/definitions/internal_controllers.RequestData'
+      produces:
+      - application/json
+      responses:
+        "201":
+          description: Игры успешно созданы
+          schema:
+            $ref: '#/definitions/internal_controllers.MultiGameResponse'
+        "207":
+          description: Частично созданы игры (успех + ошибки)
+          schema:
+            $ref: '#/definitions/internal_controllers.MultiGameResponse'
+        "400":
+          description: Неверный JSON или превышено количество игр
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка создания игр
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Создать несколько игр
+      tags:
+      - games
+  /games/search:
+    get:
+      description: Возвращает список игр, соответствующих переданному заголовку
+      parameters:
+      - description: Название игры для поиска
+        in: query
+        name: title
+        required: true
+        type: string
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            items:
+              $ref: '#/definitions/games_webapp_internal_models.Game'
+            type: array
+        "400":
+          description: Bad Request
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Поиск игр по названию
+      tags:
+      - games
+  /games/user:
+    get:
+      description: Возвращает список игр пользователя с возможностью фильтрации по
+        статусу, поиска по названию, сортировки и пагинации
+      parameters:
+      - description: Фильтр по статусу (planned, playing, finished, dropped)
+        in: query
+        name: status
+        type: string
+      - description: Поиск по названию игры
+        in: query
+        name: search
+        type: string
+      - description: 'Сортировка по полю: title, year, priority'
+        in: query
+        name: sort_by
+        type: string
+      - description: 'Порядок сортировки: asc или desc'
+        in: query
+        name: sort_order
+        type: string
+      - description: Номер страницы (по умолчанию 1)
+        in: query
+        name: page
+        type: integer
+      - description: Количество элементов на странице (1-100)
+        in: query
+        name: page_size
+        type: integer
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: OK
+          schema:
+            $ref: '#/definitions/internal_controllers.PaginationResponse'
+        "401":
+          description: Unauthorized
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Internal Server Error
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      summary: Получить игры пользователя
+      tags:
+      - games
+  /games/user/stats:
+    get:
+      description: 'Возвращает количество игр пользователя по статусам: Finished,
+        Playing, Planned, Dropped.'
+      produces:
+      - application/json
+      responses:
+        "200":
+          description: Статистика игр пользователя
+          schema:
+            $ref: '#/definitions/internal_controllers.GameStats'
+        "401":
+          description: Пользователь не авторизован
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+        "500":
+          description: Ошибка при получении статистики
+          schema:
+            additionalProperties:
+              type: string
+            type: object
+      security:
+      - ApiKeyAuth: []
+      summary: Получить статистику игр пользователя
+      tags:
+      - games
+swagger: "2.0"

@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 	"log/slog"
+	"strings"
 
 	"games_webapp/internal/models"
 	"games_webapp/internal/storage/mariadb"
@@ -35,36 +36,6 @@ func (s *GameService) GetAll() ([]models.Game, error) {
 	return results, nil
 }
 
-func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) ([]models.UserGameResponse, int, error) {
-	const op = "services.games.GetAllPaginatedForUser"
-
-	var results []models.UserGameResponse
-	var count int64
-
-	offset := (page - 1) * pageSize
-
-	if err := s.storage.DB.
-		Model(&models.UserGames{}).
-		Where("user_id = ?", userID).
-		Count(&count).Error; err != nil {
-		return nil, 0, fmt.Errorf("%s: %w", op, err)
-	}
-
-	if err := s.storage.DB.
-		Table("games").
-		Select("games.*, user_games.priority, user_games.status").
-		Joins("JOIN user_games ON user_games.game_id = games.id").
-		Where("user_games.user_id = ?", userID).
-		Order("games.title ASC").
-		Offset(offset).
-		Limit(pageSize).
-		Find(&results).Error; err != nil {
-		return nil, 0, fmt.Errorf("%s: %w", op, err)
-	}
-
-	return results, int(count), nil
-}
-
 func (s *GameService) GetByID(id int64) (*models.Game, error) {
 	const op = "services.games.GetByID"
 
@@ -90,21 +61,56 @@ func (s *GameService) SearchAllGames(query string) ([]models.Game, error) {
 	return results, nil
 }
 
-func (s *GameService) SearchUserGames(userID int64, query string) ([]models.Game, error) {
-	const op = "services.games.SearchUserGames"
+func (s *GameService) GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
+	const op = "services.games.GetUserGames"
 
-	var results []models.Game
-	rows := s.storage.DB.
-		Model(&models.Game{}).
+	var results []models.UserGameResponse
+	var count int64
+
+	offset := (page - 1) * pageSize
+
+	db := s.storage.DB.
+		Table("games").
+		Select("games.*, user_games.priority, user_games.status").
 		Joins("JOIN user_games ON user_games.game_id = games.id").
-		Where("user_games.user_id = ?", userID).
-		Where("games.title LIKE ?", "%"+query+"%").
-		Find(&results)
-	if rows.Error != nil {
-		return nil, fmt.Errorf("%s: %w", op, rows.Error)
+		Where("user_games.user_id = ?", userID)
+
+	if status != nil {
+		db = db.Where("user_games.status = ?", status)
 	}
 
-	return results, nil
+	if search != "" {
+		db = db.Where("games.title LIKE ?", "%"+search+"%")
+	}
+
+	if err := db.Count(&count).Error; err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	allowedSort := map[string]string{
+		"title":    "games.title",
+		"year":     "games.year",
+		"priority": "user_games.priority",
+	}
+
+	sortField, ok := allowedSort[sortBy]
+	if !ok {
+		sortField = "games.title"
+	}
+
+	if strings.ToLower(sortOrder) != "desc" {
+		sortOrder = "asc"
+	}
+
+	if err := db.
+		Order(fmt.Sprintf("%s %s", sortField, sortOrder)).
+		Offset(offset).
+		Limit(pageSize).
+		Find(&results).Error; err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return results, int(count), nil
 }
 
 func (s *GameService) Create(g *models.Game) (*models.Game, error) {

@@ -13,6 +13,10 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
+	_ "games_webapp/docs"
+
+	httpSwagger "github.com/swaggo/http-swagger"
+
 	ssogrpc "games_webapp/internal/clients/sso/grpc"
 )
 
@@ -49,9 +53,8 @@ func SetupRouter(
 				r.Use(authMiddleware.ValidateToken)
 				r.Get("/user/info", authController.GetUserInfo)
 				r.Get("/user/stats", gameController.GetGameStats)
-				r.Get("/user", gameController.GetAllPaginatedForUser)
+				r.Get("/user", gameController.GetUserGames)
 				r.Get("/search", gameController.SearchAllGames)
-				r.Get("/user/search", gameController.SearchUserGames)
 				r.Post("/", gameController.Create)
 				r.Post("/multi", gameController.CreateMultiGamesDB)
 				r.Route("/{id}", func(r chi.Router) {
@@ -63,5 +66,8 @@ func SetupRouter(
 		})
 	})
 
+	r.Get("/swagger/*", httpSwagger.Handler(
+		httpSwagger.URL("http://localhost:8082/swagger/doc.json"),
+	))
 	return r
 }

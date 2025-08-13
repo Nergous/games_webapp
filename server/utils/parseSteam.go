@@ -54,6 +54,8 @@ func findGameSteam(name string) (string, error) {
 	params.Add("cc", "RU")
 	params.Add("l", "russian")
 	params.Add("realm", "1")
+	params.Add("use_search_spellcheck", "1")
+	params.Add("use_store_query", "1")
 
 	req, err := http.NewRequest("GET", steamSearchUrl, nil)
 	if err != nil {

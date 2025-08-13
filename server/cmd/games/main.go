@@ -16,6 +16,8 @@ import (
 	"games_webapp/internal/storage/mariadb"
 	"games_webapp/internal/storage/uploads"
 
+	_ "games_webapp/internal/controllers"
+
 	ssogrpc "games_webapp/internal/clients/sso/grpc"
 )
 
@@ -134,3 +136,12 @@ func setupLogger(env string) *slog.Logger {
 	}
 	return log
 }
+
+// @title Game WebApp API
+// @version 1.0
+// @description API для управления библиотекой игр пользователей
+// @contact.name Nergous
+// @contact.email Nergous6@yandex.ru
+
+// @host https://games.nergous.ru
+// @BasePath /api

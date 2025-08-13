@@ -9,9 +9,10 @@ var (
 
 	ErrTooManyGames = errors.New("нельзя создать более 100 игр одновременно")
 
-	ErrGetGames  = errors.New("ошибка при получении игр")
-	ErrGetGame   = errors.New("ошибка при получении игры по id")
-	ErrSearching = errors.New("ошибка при поиске игры по названию")
+	ErrGetGames     = errors.New("ошибка при получении игр")
+	ErrGetGame      = errors.New("ошибка при получении игры по id")
+	ErrGetUserGames = errors.New("ошибка при получении игр пользователя")
+	ErrSearching    = errors.New("ошибка при поиске игры по названию")
 
 	ErrMissingImage = errors.New("отсутствует картинка в запросе")
 	ErrMissingTitle = errors.New("отсутствует title в запросе")
