@@ -78,6 +78,26 @@ func (m *MockGameService) CreateUserGame(ug *models.UserGames) error {
 	return args.Error(0)
 }
 
+func (m *MockGameService) GetDroppedGames(id int64) (int, error) {
+	args := m.Called(id)
+	return args.Get(0).(int), args.Error(0)
+}
+
+func (m *MockGameService) GetFinishedGames(id int64) (int, error) {
+	args := m.Called(id)
+	return args.Get(0).(int), args.Error(0)
+}
+
+func (m *MockGameService) GetPlayingGames(id int64) (int, error) {
+	args := m.Called(id)
+	return args.Get(0).(int), args.Error(0)
+}
+
+func (m *MockGameService) GetPlannedGames(id int64) (int, error) {
+	args := m.Called(id)
+	return args.Get(0).(int), args.Error(0)
+}
+
 func (m *MockGameService) UpdateUserGame(ug *models.UserGames) error {
 	args := m.Called(ug)
 	return args.Error(0)

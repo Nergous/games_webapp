@@ -2,11 +2,14 @@ package controllers
 
 import (
 	"context"
+	"crypto/sha256"
 	"encoding/json"
+	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
 	"strings"
+	"time"
 	"unicode"
 
 	"games_webapp/internal/middleware"
@@ -177,6 +180,10 @@ func generatePhotoFilename(email string) string {
 			return -1
 		}
 	}, email)
+
+	timestamp := time.Now().Format("20060102150405")
+	hash := sha256.Sum256([]byte(cleanEmail + timestamp))
+	cleanEmail = fmt.Sprintf("%x", hash[:8])
 
 	return cleanEmail + ".jpg"
 }

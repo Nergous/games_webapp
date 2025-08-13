@@ -16,7 +16,7 @@ func (m *MockUploads) DeleteImage(filename string) error {
 	return args.Error(0)
 }
 
-func (m *MockUploads) ReplaceImage(image []byte, oldFilename string) error {
-	args := m.Called(image, oldFilename)
+func (m *MockUploads) ReplaceImage(image []byte, oldFilename, newFilename string) error {
+	args := m.Called(image, oldFilename, newFilename)
 	return args.Error(0)
 }

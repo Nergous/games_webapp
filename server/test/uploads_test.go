@@ -192,7 +192,7 @@ func TestReplaceImage(t *testing.T) {
 	}
 
 	t.Run("successful replace", func(t *testing.T) {
-		err := u.ReplaceImage(newImage, filename)
+		err := u.ReplaceImage(newImage, filename, "new.jpg")
 		if err != nil {
 			t.Errorf("expected no error, got %v", err)
 		}
@@ -209,21 +209,21 @@ func TestReplaceImage(t *testing.T) {
 	})
 
 	t.Run("replace with empty image", func(t *testing.T) {
-		err := u.ReplaceImage([]byte{}, filename)
+		err := u.ReplaceImage([]byte{}, filename, "new.jpg")
 		if err != uploads.ErrInvalidImage {
 			t.Errorf("expected ErrInvalidImage, got %v", err)
 		}
 	})
 
 	t.Run("empty filename", func(t *testing.T) {
-		err := u.ReplaceImage(newImage, "")
+		err := u.ReplaceImage(newImage, "", "")
 		if err != uploads.ErrInvalidFileName {
 			t.Errorf("expected ErrInvalidFileName, got %v", err)
 		}
 	})
 
 	t.Run("replace non-existent file", func(t *testing.T) {
-		err := u.ReplaceImage(newImage, "nonexistent.jpg")
+		err := u.ReplaceImage(newImage, "nonexistent.jpg", "new.jpg")
 		if err == nil {
 			t.Error("expected error when replacing non-existent file, got nil")
 		}
@@ -294,7 +294,7 @@ func TestConcurrentAccess(t *testing.T) {
 
 		go func() {
 			defer wg.Done()
-			err := u.ReplaceImage(testImage, filename)
+			err := u.ReplaceImage(testImage, filename, "new.jpg")
 			if err != nil {
 				errors <- err
 			}
