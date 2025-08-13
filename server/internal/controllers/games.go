@@ -570,21 +570,32 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
 		return
 	}
-	existingUserGame, err := c.service.GetUserGame(userID, gameID)
-	if err != nil {
-		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
-		return
+
+	userGame := models.UserGames{}
+
+	if userID != existingGame.Creator {
+		userGame = models.UserGames{
+			UserID:   userID,
+			GameID:   userID,
+			Priority: 0,
+			Status:   models.GameStatus(request.Status),
+		}
+	} else {
+		existingUserGame, err := c.service.GetUserGame(userID, gameID)
+		if err != nil {
+			c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+			http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+			return
+		}
+		userGame = models.UserGames{
+			UserID:   userID,
+			GameID:   existingUserGame.GameID,
+			Priority: existingUserGame.Priority,
+			Status:   models.GameStatus(request.Status),
+		}
 	}
 
-	userGame := &models.UserGames{
-		UserID:   userID,
-		GameID:   existingGame.ID,
-		Priority: existingUserGame.Priority,
-		Status:   models.GameStatus(request.Status),
-	}
-
-	if err := c.service.UpdateUserGame(userGame); err != nil {
+	if err := c.service.UpdateUserGame(&userGame); err != nil {
 		c.log.Error(ErrUpdateUserGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrUpdateUserGame.Error(), http.StatusInternalServerError)
 		return
