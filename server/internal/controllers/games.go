@@ -24,11 +24,11 @@ import (
 )
 
 type GameServicer interface {
-	GetAll() ([]models.Game, error)
 	GetByID(id int64) (*models.Game, error)
 	SearchAllGames(query string) ([]models.Game, error)
 	GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
 	GetUserGame(userID, gameID int64) (*models.UserGames, error)
+	GetGamesPaginated(search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
 
 	Create(game *models.Game) (*models.Game, error)
 	Update(game *models.Game) (*models.Game, error)
@@ -100,21 +100,55 @@ func NewGameController(s GameServicer, log *slog.Logger, u uploads.IUploads) *Ga
 }
 
 func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
-	const op = "controllers.games.GetAll"
+	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
 
-	res, err := c.service.GetAll()
+	query := r.URL.Query()
+
+	search := strings.TrimSpace(query.Get("search"))
+
+	sortBy := query.Get("sort_by")
+	sortOrder := query.Get("sort_order")
+
+	page, _ := strconv.Atoi(query.Get("page"))
+	if page < 1 {
+		page = 1
+	}
+
+	pageSize, _ := strconv.Atoi(query.Get("page_size"))
+	if pageSize < 1 {
+		pageSize = 10
+	} else if pageSize > 100 {
+		pageSize = 100
+	}
+
+	games, total, err := c.service.GetGamesPaginated(search, sortBy, sortOrder, page, pageSize)
 	if err != nil {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("operation", op),
-			slog.String("error", err.Error()))
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	totalPages := total / pageSize
+	if total%pageSize != 0 {
+		totalPages++
+	}
+
+	response := PaginationResponse{
+		Total:   total,
+		Pages:   totalPages,
+		Current: page,
+		Size:    pageSize,
+		Data:    games,
+	}
+
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(res); err != nil {
+
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return

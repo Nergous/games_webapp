@@ -24,16 +24,47 @@ func NewGameService(s *mariadb.Storage, log *slog.Logger) *GameService {
 	}
 }
 
-func (s *GameService) GetAll() ([]models.Game, error) {
-	const op = "services.games.GetAll"
+func (s *GameService) GetGamesPaginated(search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
+	const op = "services.games.GetAllGames"
 
-	var results []models.Game
-	rows := s.storage.DB.Find(&results)
-	if rows.Error != nil {
-		return nil, fmt.Errorf("%s: %w", op, rows.Error)
+	var results []models.UserGameResponse
+	var count int64
+
+	offset := (page - 1) * pageSize
+
+	db := s.storage.DB.Table("games")
+
+	if search != "" {
+		db = db.Where("games.title LIKE ?", "%"+search+"%")
 	}
 
-	return results, nil
+	if err := db.Count(&count).Error; err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	allowedSort := map[string]string{
+		"title": "games.title",
+		"year":  "games.year",
+	}
+
+	sortField, ok := allowedSort[sortBy]
+	if !ok {
+		sortField = "games.title"
+	}
+
+	if strings.ToLower(sortOrder) != "desc" {
+		sortOrder = "asc"
+	}
+
+	if err := db.
+		Order(fmt.Sprintf("%s %s", sortField, sortOrder)).
+		Offset(offset).
+		Limit(pageSize).
+		Find(&results).Error; err != nil {
+		return nil, 0, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return results, int(count), nil
 }
 
 func (s *GameService) GetByID(id int64) (*models.Game, error) {

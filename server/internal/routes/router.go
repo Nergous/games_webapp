@@ -48,9 +48,9 @@ func SetupRouter(
 		r.Post("/register", authController.Register)
 		r.Post("/login", authController.Login)
 		r.Route("/games", func(r chi.Router) {
-			r.Get("/", gameController.GetAll)
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware.ValidateToken)
+				r.Get("/", gameController.GetAll)
 				r.Get("/user/info", authController.GetUserInfo)
 				r.Get("/user/stats", gameController.GetGameStats)
 				r.Get("/user", gameController.GetUserGames)
