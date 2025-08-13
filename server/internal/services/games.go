@@ -55,7 +55,7 @@ func (s *GameService) GetAllPaginatedForUser(userID int64, page, pageSize int) (
 		Select("games.*, user_games.priority, user_games.status").
 		Joins("JOIN user_games ON user_games.game_id = games.id").
 		Where("user_games.user_id = ?", userID).
-		Order("games.title DESC").
+		Order("games.title ASC").
 		Offset(offset).
 		Limit(pageSize).
 		Find(&results).Error; err != nil {
