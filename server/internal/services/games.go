@@ -318,6 +318,7 @@ func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 		fmt.Println("НУ Я ТУТ")
 		return fmt.Errorf("%s: %w", op, err)
 	}
+	fmt.Printf("%v", existing)
 	fmt.Println("ВСЁ ЧЕТЕНЬКО")
 	return nil
 }
