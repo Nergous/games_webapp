@@ -60,6 +60,8 @@ func SetupRouter(
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", gameController.GetByID)
 					r.Put("/", gameController.Update)
+					r.Put("/status", gameController.UpdateStatus)
+					r.Put("/priority", gameController.UpdatePriority)
 					r.Delete("/", gameController.Delete)
 				})
 			})

@@ -28,6 +28,7 @@ type GameServicer interface {
 	GetByID(id int64) (*models.Game, error)
 	SearchAllGames(query string) ([]models.Game, error)
 	GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
+	GetUserGame(userID, gameID int64) (*models.UserGames, error)
 
 	Create(game *models.Game) (*models.Game, error)
 	Update(game *models.Game) (*models.Game, error)
@@ -494,6 +495,134 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
+		c.log.Error(ErrUpdateGame.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+type UpdateStatusRequest struct {
+	Status string `json:"status"`
+}
+
+func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.games.UpdateStatus"
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok || userID <= 0 {
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	gameIDStr := chi.URLParam(r, "id")
+	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	if err != nil {
+		c.log.Error(ErrUpdateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		return
+	}
+
+	existingGame, err := c.service.GetByID(gameID)
+	if err != nil {
+		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	request := UpdateStatusRequest{Status: "planned"}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		c.log.Error("Ошибка парсинга JSON тела", slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		return
+	}
+	existingUserGame, err := c.service.GetUserGame(userID, gameID)
+	if err != nil {
+		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	userGame := &models.UserGames{
+		UserID:   userID,
+		GameID:   existingGame.ID,
+		Priority: existingUserGame.Priority,
+		Status:   models.GameStatus(request.Status),
+	}
+
+	if err := c.service.UpdateUserGame(userGame); err != nil {
+		c.log.Error(ErrUpdateUserGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateUserGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(userGame); err != nil {
+		c.log.Error(ErrUpdateGame.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+type UpdatePriorityRequest struct {
+	Priority int `json:"priority"`
+}
+
+func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.games.UpdatePriority"
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok || userID <= 0 {
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	gameIDStr := chi.URLParam(r, "id")
+	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	if err != nil {
+		c.log.Error(ErrUpdateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		return
+	}
+
+	existingGame, err := c.service.GetByID(gameID)
+	if err != nil {
+		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	request := UpdatePriorityRequest{Priority: 0}
+
+	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+		c.log.Error("Ошибка парсинга JSON тела", slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		return
+	}
+	existingUserGame, err := c.service.GetUserGame(userID, gameID)
+	if err != nil {
+		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	userGame := &models.UserGames{
+		UserID:   userID,
+		GameID:   existingGame.ID,
+		Priority: request.Priority,
+		Status:   existingUserGame.Status,
+	}
+
+	if err := c.service.UpdateUserGame(userGame); err != nil {
+		c.log.Error(ErrUpdateUserGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateUserGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(userGame); err != nil {
 		c.log.Error(ErrUpdateGame.Error(), slog.String("error", err.Error()))
 		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
 		return

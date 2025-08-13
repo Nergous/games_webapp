@@ -61,6 +61,19 @@ func (s *GameService) SearchAllGames(query string) ([]models.Game, error) {
 	return results, nil
 }
 
+func (s *GameService) GetUserGame(userID, gameID int64) (*models.UserGames, error) {
+	const op = "services.games.GetUserGame"
+
+	var g models.UserGames
+
+	rows := s.storage.DB.Where("user_id = ? AND game_id = ?", userID, gameID).First(&g)
+	if rows.Error != nil {
+		return nil, fmt.Errorf("%s: %w", op, rows.Error)
+	}
+
+	return &g, nil
+}
+
 func (s *GameService) GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
 	const op = "services.games.GetUserGames"
 
