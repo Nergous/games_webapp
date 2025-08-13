@@ -300,6 +300,8 @@ func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 	fmt.Println("ОБНОВЛЕНИЕ")
 
 	var existing models.UserGames
+
+	fmt.Printf("%v", ug)
 	err := s.storage.DB.
 		Table("user_games").
 		Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).
