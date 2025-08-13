@@ -92,6 +92,16 @@ func (c *Client) Login(ctx context.Context, email, password string, appID int32)
 	return resp.GetToken(), nil
 }
 
+func (c *Client) IsAdmin(ctx context.Context, userID int64) (bool, error) {
+	resp, err := c.api.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: userID})
+	if err != nil {
+		c.log.Error("sso.IsAdmin failed", slog.String("error", err.Error()))
+		return false, err
+	}
+
+	return resp.GetIsAdmin(), nil
+}
+
 func (c *Client) GetUserInfo(ctx context.Context, userID int64) (string, string, string, error) {
 	resp, err := c.api.UserInfo(ctx, &ssov1.UserInfoRequest{UserId: userID})
 	if err != nil {

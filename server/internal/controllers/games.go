@@ -62,6 +62,7 @@ type CreateGameRequest struct {
 	Status    models.GameStatus `json:"status"`
 	URL       string            `json:"url"`
 	Priority  int               `json:"priority"`
+	Creator   int64             `json:"creator"`
 }
 
 type UpdateGameRequest struct {
@@ -290,6 +291,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 		Year:      r.FormValue("year"),
 		Genre:     r.FormValue("genre"),
 		URL:       r.FormValue("url"),
+		Creator:   userID,
 	}
 
 	var err error
@@ -335,6 +337,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 		Year:      request.Year,
 		Genre:     request.Genre,
 		URL:       request.URL,
+		Creator:   request.Creator,
 		CreatedAt: &timeNow,
 		UpdatedAt: &timeNow,
 	}
@@ -383,6 +386,20 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		c.log.Error(ErrUpdateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		return
+	}
+
+	existingGame, err := c.service.GetByID(gameID)
+	if err != nil {
+		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	isAdmin := r.Context().Value(middleware.IsAdminKey).(bool)
+	if !isAdmin && existingGame.Creator != userID {
+		c.log.Error(ErrUpdateGame.Error(), slog.String("operation", op), slog.String("error", "user is not admin"))
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -471,6 +488,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		Year:      getFormValue(r, gameData, "year"),
 		Genre:     getFormValue(r, gameData, "genre"),
 		URL:       getFormValue(r, gameData, "url"),
+		Creator:   existingGame.Creator,
 		CreatedAt: createdAt,
 		UpdatedAt: &timeNow,
 	}
@@ -555,7 +573,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Получаем игру по ID
-	_, err = c.service.GetByID(idInt)
+	game, err := c.service.GetByID(idInt)
 	if err != nil {
 		c.log.Error(
 			"Не удалось получить игру для удаления",
@@ -566,27 +584,32 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Удаляем файл изображения
-	// if err := c.uploads.DeleteImage(game.Image); err != nil {
-	// 	// Логируем, но не прерываем выполнение — игра всё равно будет удалена
-	// 	c.log.Error(
-	// 		"Ошибка удаления изображения",
-	// 		slog.String("operation", op),
-	// 		slog.String("filename", game.Image),
-	// 		slog.String("error", err.Error()))
-	// }
+	isAdmin := r.Context().Value(middleware.IsAdminKey).(bool)
 
-	// // Удаляем запись игры
-	// err = c.service.Delete(idInt)
-	// if err != nil {
-	// 	c.log.Error(
-	// 		ErrDelete.Error(),
-	// 		slog.String("operation", op),
-	// 		slog.String("id", id),
-	// 		slog.String("error", err.Error()))
-	// 	http.Error(w, ErrDelete.Error(), http.StatusInternalServerError)
-	// 	return
-	// }
+	if userID == game.Creator || isAdmin {
+		if err := c.uploads.DeleteImage(game.Image); err != nil {
+			// Логируем, но не прерываем выполнение — игра всё равно будет удалена
+			c.log.Error(
+				"Ошибка удаления изображения",
+				slog.String("operation", op),
+				slog.String("filename", game.Image),
+				slog.String("error", err.Error()))
+		}
+
+		// Удаляем запись игры
+		err = c.service.Delete(idInt)
+		if err != nil {
+			c.log.Error(
+				ErrDeleteGame.Error(),
+				slog.String("operation", op),
+				slog.String("id", id),
+				slog.String("error", err.Error()))
+			http.Error(w, ErrDeleteGame.Error(), http.StatusInternalServerError)
+			return
+		}
+
+	}
+
 	err = c.service.DeleteUserGame(userID, idInt)
 	if err != nil {
 		c.log.Error(

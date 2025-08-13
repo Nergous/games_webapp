@@ -13,6 +13,7 @@ type Game struct {
 	Publisher string `json:"publisher"`
 	Year      string `json:"year"`
 	Genre     string `json:"genre"`
+	Creator   int64  `json:"creator"`
 
 	URL       string     `json:"url"`
 	CreatedAt *time.Time `json:"created_at" gorm:"type:timestamp"`

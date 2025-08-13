@@ -18,7 +18,10 @@ func NewAuthMiddleware(client *grpc.Client) *AuthMiddleware {
 
 type contextKey string
 
-const UserIDKey = contextKey("userID")
+const (
+	UserIDKey  = contextKey("userID")
+	IsAdminKey = contextKey("isAdmin")
+)
 
 func UserIDFromContext(ctx context.Context) (int64, bool) {
 	id, ok := ctx.Value(UserIDKey).(int64)
@@ -41,7 +44,14 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 			return
 		}
 
+		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID)
+		if err != nil {
+			http.Error(w, "ошибка распознавания прав", http.StatusInternalServerError)
+			return
+		}
+
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx = context.WithValue(ctx, IsAdminKey, isAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})
 }
