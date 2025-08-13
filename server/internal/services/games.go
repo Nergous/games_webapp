@@ -24,7 +24,7 @@ func NewGameService(s *mariadb.Storage, log *slog.Logger) *GameService {
 	}
 }
 
-func (s *GameService) GetGamesPaginated(search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
+func (s *GameService) GetGamesPaginated(userID int64, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
 	const op = "services.games.GetAllGames"
 
 	var results []models.UserGameResponse
@@ -35,7 +35,9 @@ func (s *GameService) GetGamesPaginated(search, sortBy, sortOrder string, page, 
 	db := s.storage.DB.Table("games")
 
 	if search != "" {
-		db = db.Where("games.title LIKE ?", "%"+search+"%")
+		db = db.Where("games.title LIKE ?", "%"+search+"%").
+			Joins("LEFT JOIN user_games ON user_games.game_id = games.id").
+			Where("user_games.user_id = ?", userID)
 	}
 
 	if err := db.Count(&count).Error; err != nil {

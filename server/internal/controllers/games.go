@@ -28,7 +28,7 @@ type GameServicer interface {
 	SearchAllGames(query string) ([]models.Game, error)
 	GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
 	GetUserGame(userID, gameID int64) (*models.UserGames, error)
-	GetGamesPaginated(search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
+	GetGamesPaginated(userID int64, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
 
 	Create(game *models.Game) (*models.Game, error)
 	Update(game *models.Game) (*models.Game, error)
@@ -100,7 +100,7 @@ func NewGameController(s GameServicer, log *slog.Logger, u uploads.IUploads) *Ga
 }
 
 func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -125,7 +125,7 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 		pageSize = 100
 	}
 
-	games, total, err := c.service.GetGamesPaginated(search, sortBy, sortOrder, page, pageSize)
+	games, total, err := c.service.GetGamesPaginated(userID, search, sortBy, sortOrder, page, pageSize)
 	if err != nil {
 		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
