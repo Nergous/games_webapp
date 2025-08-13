@@ -4,14 +4,11 @@ import (
 	"context"
 	"crypto/sha256"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"io"
 	"log/slog"
 	"net/http"
-	"net/url"
 	"path/filepath"
-	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -20,8 +17,8 @@ import (
 	"games_webapp/internal/middleware"
 	"games_webapp/internal/models"
 	"games_webapp/internal/storage/uploads"
+	"games_webapp/utils"
 
-	"github.com/PuerkitoBio/goquery"
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
@@ -127,7 +124,7 @@ func (c *GameController) GetAllPaginatedForUser(w http.ResponseWriter, r *http.R
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -189,11 +186,11 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	id_s, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		c.log.Error(
-			ErrDelete.Error(),
+			ErrInvalidID.Error(),
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrDelete.Error(), http.StatusBadRequest)
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
 		return
 	}
 	res, err := c.service.GetByID(int64(id_s))
@@ -221,14 +218,14 @@ func (c *GameController) SearchAllGames(w http.ResponseWriter, r *http.Request) 
 
 	query := r.URL.Query().Get("title")
 	if query == "" {
-		http.Error(w, "missing title query", http.StatusBadRequest)
+		http.Error(w, ErrMissingTitle.Error(), http.StatusBadRequest)
 		return
 	}
 
 	games, err := c.service.SearchAllGames(query)
 	if err != nil {
 		c.log.Error("ошибка поиска", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "failed to search games", http.StatusInternalServerError)
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -247,20 +244,20 @@ func (c *GameController) SearchUserGames(w http.ResponseWriter, r *http.Request)
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	query := r.URL.Query().Get("title")
 	if query == "" {
-		http.Error(w, "missing title query", http.StatusBadRequest)
+		http.Error(w, ErrMissingTitle.Error(), http.StatusBadRequest)
 		return
 	}
 
 	games, err := c.service.SearchUserGames(userID, query)
 	if err != nil {
 		c.log.Error("ошибка поиска", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "failed to search games", http.StatusInternalServerError)
+		http.Error(w, ErrSearching.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -275,13 +272,13 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.Create"
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok || userID <= 0 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "cannot parse form", http.StatusBadRequest)
+		c.log.Error(ErrCreateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrParsingForm.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -301,15 +298,15 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if request.Priority > 10 {
-		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", "priority > 10"))
-		http.Error(w, "priority > 10", http.StatusBadRequest)
+		c.log.Error(ErrCreateGame.Error(), slog.String("operation", op), slog.String("error", "priority > 10"))
+		http.Error(w, ErrInvalidPriority.Error(), http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		c.log.Error("image not provided", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "image not provided", http.StatusBadRequest)
+		http.Error(w, ErrMissingImage.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -317,14 +314,14 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	imageData, err := io.ReadAll(file)
 	if err != nil {
 		c.log.Error("failed to read image", slog.String("error", err.Error()))
-		http.Error(w, "failed to read image", http.StatusInternalServerError)
+		http.Error(w, ErrReadImage.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	imageFilename := uuid.New().String() + filepath.Ext(header.Filename)
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
 		c.log.Error("failed to save image", slog.String("error", err.Error()))
-		http.Error(w, "failed to save image", http.StatusInternalServerError)
+		http.Error(w, ErrSaveImage.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -345,8 +342,8 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	res, err := c.service.Create(game)
 	if err != nil {
 		_ = c.uploads.DeleteImage(imageFilename)
-		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrCreateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -358,15 +355,15 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := c.service.CreateUserGame(usrGame); err != nil {
-		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, err.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrCreateUserGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrCreateUserGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
-		c.log.Error(ErrCreate.Error(), slog.String("error", err.Error()))
+		c.log.Error(ErrCreateGame.Error(), slog.String("error", err.Error()))
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -377,15 +374,15 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok || userID <= 0 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
 	gameIDStr := chi.URLParam(r, "id")
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
-		c.log.Error(ErrUpdate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrUpdate.Error(), http.StatusBadRequest)
+		c.log.Error(ErrUpdateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -395,7 +392,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			c.log.Error("Ошибка парсинга формы", slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, "invalid form data", http.StatusBadRequest)
+			http.Error(w, ErrParsingForm.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -406,14 +403,14 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 			oldFilename, err := c.service.GetByID(gameID)
 			if err != nil {
 				c.log.Error("Ошибка получения игры", slog.String("operation", op), slog.String("error", err.Error()))
-				http.Error(w, "failed to get game", http.StatusInternalServerError)
+				http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			imageData, err := io.ReadAll(file)
 			if err != nil {
 				c.log.Error("Ошибка чтения изображения", slog.String("operation", op), slog.String("error", err.Error()))
-				http.Error(w, "failed to read image", http.StatusBadRequest)
+				http.Error(w, ErrReadImage.Error(), http.StatusBadRequest)
 				return
 			}
 
@@ -424,21 +421,21 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 
 			if err := c.uploads.ReplaceImage(imageData, oldFilename.Image, filename); err != nil {
 				c.log.Error("Ошибка замены изображения", slog.String("operation", op), slog.String("error", err.Error()))
-				http.Error(w, "failed to save image", http.StatusInternalServerError)
+				http.Error(w, ErrSaveImage.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 	} else if strings.HasPrefix(contentType, "application/json") {
 		if err := json.NewDecoder(r.Body).Decode(&gameData); err != nil {
 			c.log.Error("Ошибка парсинга JSON тела", slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, "invalid JSON", http.StatusBadRequest)
+			http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
 			return
 		}
 		if img, ok := gameData["image"].(string); ok {
 			filename = img
 		}
 	} else {
-		http.Error(w, "invalid Content-Type", http.StatusBadRequest)
+		http.Error(w, ErrInvalidRequest.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -447,7 +444,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		priority = 0
 	}
 	if priority > 10 {
-		http.Error(w, "priority > 10", http.StatusBadRequest)
+		http.Error(w, ErrInvalidPriority.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -456,7 +453,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		t, err := time.Parse(time.RFC3339, createdAtStr)
 		if err != nil {
 			c.log.Error("Ошибка парсинга даты создания", slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, "invalid created_at", http.StatusBadRequest)
+			http.Error(w, ErrInvalidRequest.Error(), http.StatusBadRequest)
 			return
 		}
 		createdAt = &t
@@ -480,8 +477,8 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 
 	res, err := c.service.Update(game)
 	if err != nil {
-		c.log.Error(ErrUpdate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrUpdate.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrUpdateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -493,16 +490,16 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if err := c.service.UpdateUserGame(userGame); err != nil {
-		c.log.Error(ErrUpdate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrUpdate.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrUpdateUserGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateUserGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
-		c.log.Error(ErrUpdate.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrUpdate.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrUpdateGame.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -535,7 +532,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok || userID <= 0 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -549,11 +546,11 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	idInt, err := strconv.ParseInt(id, 10, 64)
 	if err != nil {
 		c.log.Error(
-			ErrDelete.Error(),
+			ErrInvalidID.Error(),
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrDelete.Error(), http.StatusBadRequest)
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -565,7 +562,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, "game not found", http.StatusNotFound)
+		http.Error(w, ErrGetGame.Error(), http.StatusNotFound)
 		return
 	}
 
@@ -593,11 +590,11 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	err = c.service.DeleteUserGame(userID, idInt)
 	if err != nil {
 		c.log.Error(
-			ErrDelete.Error(),
+			ErrDeleteUserGame.Error(),
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrDelete.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrDeleteUserGame.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -606,16 +603,16 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 	var request RequestData
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		c.log.Error(ErrBadRequest.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrBadRequest.Error(), http.StatusBadRequest)
+		c.log.Error(ErrParsingJSON.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
 		return
 	}
 
 	fmt.Println(request)
 
 	if len(request.Games) == 0 {
-		c.log.Error(ErrBadRequest.Error(), slog.String("error", "no games names"))
-		http.Error(w, ErrBadRequest.Error(), http.StatusBadRequest)
+		c.log.Error(ErrNoGamesNames.Error(), slog.String("error", "no games names"))
+		http.Error(w, ErrNoGamesNames.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -702,8 +699,8 @@ func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Reque
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		c.log.Error(ErrEncoding.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrEncoding.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrCreateGame.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 	}
 }
 
@@ -717,24 +714,24 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 	userID, ok := ctx.Value(middleware.UserIDKey).(int64)
 
 	if !ok || userID <= 0 {
-		return nil, errors.New("unauthorized")
+		return nil, ErrUnauthorized
 	}
 
 	var resultMap map[string]string
 	var err error
 
 	if source != "Wiki" && source != "Steam" {
-		return nil, errors.New("invalid source")
+		return nil, ErrInvalidSource
 	}
 
 	switch source {
 	case "Wiki":
-		resultMap, err = c.processWiki(name)
+		resultMap, err = utils.ProcessWiki(name, c.checkURLInDB, c.log)
 		if err != nil {
 			return nil, err
 		}
 	case "Steam":
-		resultMap, err = c.processSteam(name)
+		resultMap, err = utils.ProcessSteam(name, c.checkURLInDB, c.log)
 		if err != nil {
 			return nil, err
 		}
@@ -750,8 +747,6 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 		)
 		imageFilename = ""
 	}
-
-	fmt.Println("ALMOST THERE")
 
 	timeNow := time.Now()
 	game := &models.Game{
@@ -779,10 +774,10 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 			}
 		}
 		c.log.Error(
-			ErrCreate.Error(),
+			ErrCreateGame.Error(),
 			slog.String("error", err.Error()),
 			slog.String("game", name))
-		return nil, fmt.Errorf(ErrCreate.Error()+" %s : %s", name, err)
+		return nil, fmt.Errorf(ErrCreateGame.Error()+" %s : %s", name, err)
 
 	}
 
@@ -795,389 +790,12 @@ func (c *GameController) createSingleGame(ctx context.Context, name, source stri
 
 	if err := c.service.CreateUserGame(userGame); err != nil {
 		c.log.Error(
-			ErrCreate.Error(),
+			ErrCreateGame.Error(),
 			slog.String("error", err.Error()),
 			slog.String("game", name))
-		return nil, fmt.Errorf(ErrCreate.Error()+" %s : %s", name, err)
+		return nil, fmt.Errorf(ErrCreateGame.Error()+" %s : %s", name, err)
 	}
 	return game, nil
-}
-
-func (c *GameController) processWiki(name string) (map[string]string, error) {
-	url, err := c.findGameWiki(name)
-	if err != nil {
-		c.log.Error(
-			ErrGameWiki.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", name))
-		return nil, fmt.Errorf(ErrGameWiki.Error()+" %s : %s", name, err)
-	}
-
-	if err := c.checkURLInDB(url); err != nil {
-		return nil, fmt.Errorf("game already exists: %s", url)
-	}
-
-	fmt.Printf("Im here!")
-	resultMap, err := c.parseGameWiki(url)
-	if err != nil {
-		c.log.Error(
-			ErrParsing.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", name),
-			slog.String("url", url))
-		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
-	}
-
-	fmt.Println("COOL!")
-
-	return resultMap, nil
-}
-
-func (c *GameController) processSteam(name string) (map[string]string, error) {
-	url, err := c.findGameSteam(name)
-	if err != nil {
-		c.log.Error(
-			ErrGameSteam.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", name))
-
-		result, err := c.processWiki(name)
-		if err != nil {
-			return nil, err
-		}
-
-		return result, nil
-	}
-
-	if err := c.checkURLInDB(url); err != nil {
-		return nil, fmt.Errorf("game already exists: %s", url)
-	}
-
-	resultMap, err := c.parseGameSteam(url)
-	if err != nil {
-		c.log.Error(
-			ErrParsing.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", name),
-			slog.String("url", url))
-		return nil, fmt.Errorf(ErrParsing.Error()+" %s - %s : %s", name, url, err)
-	}
-
-	return resultMap, nil
-}
-
-func (c *GameController) findGameSteam(name string) (string, error) {
-	steamSearchUrl := "https://store.steampowered.com/search/suggest"
-
-	params := url.Values{}
-	params.Add("term", name)
-	params.Add("f", "games")
-	params.Add("cc", "RU")
-	params.Add("l", "russian")
-	params.Add("realm", "1")
-
-	req, err := http.NewRequest("GET", steamSearchUrl, nil)
-	if err != nil {
-		return "", err
-	}
-	req.URL.RawQuery = params.Encode()
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
-	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4")
-
-	cookies := map[string]string{
-		"steamCountry":         "RU|Moscow",
-		"birthtime":            "473385601",
-		"wants_mature_content": "1",
-		"Steam_Language":       "russian",
-	}
-
-	for k, v := range cookies {
-		req.AddCookie(&http.Cookie{Name: k, Value: v})
-	}
-
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return "", err
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("unexpected status code: %d", resp.StatusCode)
-	}
-
-	// Парсим HTML
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return "", err
-	}
-
-	// Находим первую игру
-	firstLink := ""
-	doc.Find("a.match").EachWithBreak(func(i int, s *goquery.Selection) bool {
-		href, exists := s.Attr("href")
-		if exists {
-			firstLink = href
-			return false // остановить после первой
-		}
-		return true
-	})
-
-	if firstLink == "" {
-		return "", fmt.Errorf("no games found for '%s'", name)
-	}
-
-	return firstLink, nil
-}
-
-func (c *GameController) parseGameSteam(gameUrl string) (map[string]string, error) {
-	u, err := url.Parse(gameUrl)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse URL: %w", err)
-	}
-
-	q := u.Query()
-	q.Set("l", "russian")
-	u.RawQuery = q.Encode()
-
-	req, err := http.NewRequest("GET", u.String(), nil)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create request: %w", err)
-	}
-
-	req.Header.Set("User-Agent", "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/58.0.3029.110 Safari/537.36")
-	req.Header.Set("Accept-Language", "ru-RU,ru;q=0.8,en-US;q=0.6,en;q=0.4")
-
-	req.AddCookie(&http.Cookie{Name: "Steam_Language", Value: "russian"})
-	req.AddCookie(&http.Cookie{Name: "birthtime", Value: "473385601"})
-	req.AddCookie(&http.Cookie{Name: "wants_mature_content", Value: "1"})
-
-	client := &http.Client{Timeout: 3 * time.Second}
-	resp, err := client.Do(req)
-	if err != nil {
-		return nil, fmt.Errorf("failed to send request: %w", err)
-	}
-
-	defer resp.Body.Close()
-
-	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("steam returned status: %d", resp.StatusCode)
-	}
-
-	doc, err := goquery.NewDocumentFromReader(resp.Body)
-	if err != nil {
-		return nil, fmt.Errorf("failed to parse HTML: %w", err)
-	}
-
-	// Получаем весь текст из блока
-	detailsText := doc.Find("div.details_block, #genresAndManufacturer").Text()
-	detailsText = strings.ReplaceAll(detailsText, "\n", " ") // Упрощаем текст
-	detailsText = regexp.MustCompile(`\s+`).ReplaceAllString(detailsText, " ")
-
-	result := make(map[string]string)
-
-	// Парсим поля по простым шаблонам
-	parseField := func(detailsText, pattern string) string {
-		re := regexp.MustCompile(pattern)
-		matches := re.FindStringSubmatch(detailsText)
-		if len(matches) > 1 {
-			return strings.TrimSpace(matches[1])
-		}
-		return ""
-	}
-
-	result["title"] = parseField(detailsText, `Название:\s*([^ ]+.*?)Жанр:`)
-	result["genre"] = parseField(detailsText, `Жанр:\s*([^ ]+.*?)Разработчик:`)
-	result["developer"] = parseField(detailsText, `Разработчик:\s*([^ ]+.*?)Издатель:`)
-	result["publisher"] = parseField(detailsText, `Издатель:\s*([^ ]+.*?)Дата выхода:`)
-	result["release_date"] = parseField(detailsText, `Дата выхода:\s*([^ ]+.*?)$`)
-	result["url"] = u.String()
-
-	// Извлекаем год из даты
-	if year := regexp.MustCompile(`(20\d{2}|19\d{2})`).FindString(result["release_date"]); year != "" {
-		result["year"] = year
-	}
-
-	// Дополнительные поля
-	result["description"] = strings.TrimSpace(doc.Find("div.game_description_snippet").Text())
-	if img, ok := doc.Find("img.game_header_image_full").Attr("src"); ok {
-		result["image"] = img
-	}
-
-	// Проверка обязательных полей
-	if result["title"] == "" || result["developer"] == "" {
-		return nil, fmt.Errorf("failed to parse required fields")
-	}
-
-	return result, nil
-}
-
-func (c *GameController) findGameWiki(gameName string) (string, error) {
-	gameName = url.QueryEscape(gameName)
-	response, err := http.Get("https://ru.wikipedia.org/w/api.php?action=opensearch&format=json&formatversion=2&search=" + gameName + "&namespace=0&limit=10")
-	if err != nil {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", gameName))
-		return "", err
-	}
-	defer response.Body.Close()
-	body, err := io.ReadAll(response.Body)
-	if err != nil {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", gameName))
-		return "", err
-	}
-	var data []interface{}
-	err = json.Unmarshal(body, &data)
-	if err != nil {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("error", err.Error()),
-			slog.String("game", gameName))
-		return "", err
-	}
-
-	if len(data) >= 4 {
-		links, ok := data[3].([]interface{})
-		if !ok || len(links) == 0 {
-			c.log.Error(
-				ErrGetGames.Error(),
-				slog.String("error", "no links"),
-				slog.String("game", gameName))
-			return "", fmt.Errorf(ErrGetGames.Error()+" %s : %s", gameName, "no links")
-		}
-
-		firstLink, ok := links[0].(string)
-		if !ok {
-			c.log.Error(
-				ErrGetGames.Error(),
-				slog.String("error", "no first link"),
-				slog.String("game", gameName))
-			return "", fmt.Errorf(ErrGetGames.Error()+" %s : %s", gameName, "no first link")
-		}
-		return firstLink, nil
-	} else {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("error", "no data"),
-			slog.String("game", gameName))
-		return "", fmt.Errorf(ErrGetGames.Error()+" %s : %s", gameName, "no data")
-	}
-}
-
-func (c *GameController) parseGameWiki(url string) (map[string]string, error) {
-	response, err := http.Get(url)
-	if err != nil {
-		c.log.Error(
-			ErrGetGames.Error(),
-			slog.String("error", err.Error()),
-			slog.String("url", url),
-		)
-		return nil, ErrGetGames
-	}
-	defer response.Body.Close()
-
-	doc, err := goquery.NewDocumentFromReader(response.Body)
-	if err != nil {
-		fmt.Println("----------------------")
-		fmt.Println(err.Error())
-		fmt.Println("----------------------")
-		return nil, ErrParsing
-	}
-
-	var (
-		title     string
-		imgSrc    string
-		developer string
-		publisher string
-		genre     string
-		year      string
-	)
-
-	infobox := doc.Find("table.infobox").First()
-	// Название игры (верхняя строка таблицы)
-	title = infobox.Find("th.infobox-above").Text()
-	title = strings.Join(strings.Fields(title), " ") // Удаляет лишние пробелы и переносы
-	title = strings.TrimSpace(title)
-	// Разработчик
-	if selection := infobox.Find("th:contains('Разработчик')"); selection.Length() > 0 {
-		developer = selection.Next().Text()
-		developer = strings.TrimSpace(developer)
-	} else if selection := infobox.Find("th:contains('Разработчики')"); selection.Length() > 0 {
-		developer = strings.Split(selection.Next().Text(), " ")[0]
-		developer = strings.TrimSpace(developer)
-	}
-
-	// Издатель/ Издатели
-	if selection := infobox.Find("th:contains('Издатель')"); selection.Length() > 0 {
-		publisher = selection.Next().Text()
-		publisher = strings.TrimSpace(publisher)
-	} else if selection := infobox.Find("th:contains('Издатели')"); selection.Length() > 0 {
-		publisher = strings.TrimSpace(selection.Next().Text())
-	}
-	// Жанр
-	genre = infobox.Find("th:contains('Жанр')").Next().Text()
-	genre = strings.TrimSpace(genre)
-	// Картинка (src = относительный путь)
-	imgSrc, _ = infobox.Find("td.infobox-image img").Attr("src")
-	imgFull := "https:" + imgSrc
-
-	var releaseText string
-	if selection := infobox.Find("th:contains('Даты выпуска')"); selection.Length() > 0 {
-		releaseText = selection.Next().Text()
-	} else if selection := infobox.Find("th:contains('Дата выпуска')"); selection.Length() > 0 {
-		releaseText = selection.Next().Text()
-	}
-	re := regexp.MustCompile(`\b(19\d{2}|20\d{2})\b`)
-	if match := re.FindStringSubmatch(releaseText); len(match) > 1 {
-		year = match[1]
-	} else if len(match) == 1 {
-		year = match[0]
-	}
-
-	// Ищем следующий <p> после таблицы
-	firstParagraph := ""
-	found := false
-	infoboxParent := infobox.Parent()
-
-	// Идём по всем дочерним элементам родителя
-	infoboxParent.Children().EachWithBreak(func(i int, s *goquery.Selection) bool {
-		// Как только находим infobox, начинаем искать <p> после неё
-		if s.Is("table.infobox") {
-			found = true
-			return true // идём дальше
-		}
-
-		if found && s.Is("p") {
-			firstParagraph = strings.TrimSpace(s.Text())
-			return false // остановить итерацию
-		}
-
-		return true // продолжать
-	})
-
-	if title == "" || firstParagraph == "" || imgFull == "" || developer == "" || publisher == "" || year == "" || genre == "" || url == "" {
-		return nil, ErrParsing
-	}
-
-	resultMap := map[string]string{
-		"title":       title,
-		"description": firstParagraph,
-		"image":       imgFull,
-		"developer":   developer,
-		"publisher":   publisher,
-		"year":        year,
-		"genre":       genre,
-		"url":         url,
-	}
-
-	return resultMap, nil
 }
 
 func (c *GameController) checkURLInDB(url string) error {
@@ -1189,33 +807,33 @@ func (c *GameController) checkURLInDB(url string) error {
 
 func (c *GameController) downloadAndSaveImage(url string) (string, error) {
 	if url == "" {
-		return "", errors.New("image url is empty")
+		return "", ErrInvalidURL
 	}
 
 	client := &http.Client{Timeout: 30 * time.Second}
 	resp, err := client.Get(url)
 	if err != nil {
-		return "", err
+		return "", ErrImageURL
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", fmt.Errorf("failed to download image: %s", resp.Status)
+		return "", ErrDownloadImage
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
-		return "", fmt.Errorf("unexpected content type: %s", contentType)
+		return "", ErrUnexpectedImageType
 	}
 
 	imageData, err := io.ReadAll(resp.Body)
 	if err != nil {
-		return "", err
+		return "", ErrReadImage
 	}
 	filename := generateImageFilename(url, contentType)
 
 	if err := c.uploads.SaveImage(imageData, filename); err != nil {
-		return "", err
+		return "", ErrSaveImage
 	}
 
 	return filename, nil
@@ -1251,7 +869,7 @@ type GameStats struct {
 func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok || userID <= 0 {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -1264,19 +882,23 @@ func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 
 	finished, err := c.service.GetFinishedGames(userID)
 	if err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		return
 	}
 	playing, err := c.service.GetPlayingGames(userID)
 	if err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		return
 	}
 	planned, err := c.service.GetPlannedGames(userID)
 	if err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		return
 	}
 
 	dropped, err := c.service.GetDroppedGames(userID)
 	if err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
 		return
 	}
 

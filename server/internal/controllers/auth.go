@@ -44,8 +44,8 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.auth.Register"
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
-		c.log.Error(ErrCreate.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "cannot parse form", http.StatusBadRequest)
+		c.log.Error(ErrParsingForm.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrParsingForm.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -56,24 +56,24 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if request.Email == "" {
-		http.Error(w, "missing email", http.StatusBadRequest)
+		http.Error(w, ErrMissingEmail.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if request.Password == "" {
-		http.Error(w, "missing password", http.StatusBadRequest)
+		http.Error(w, ErrMissingPassword.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if request.SteamURL == "" {
-		http.Error(w, "missing steam url", http.StatusBadRequest)
+		http.Error(w, ErrMissingSteamURL.Error(), http.StatusBadRequest)
 		return
 	}
 
 	file, _, err := r.FormFile("image")
 	if err != nil {
 		c.log.Error("image not provided", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "image not provided", http.StatusBadRequest)
+		http.Error(w, ErrMissingImage.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -81,28 +81,28 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	imageData, err := io.ReadAll(file)
 	if err != nil {
 		c.log.Error("failed to read image", slog.String("error", err.Error()))
-		http.Error(w, "failed to read image", http.StatusInternalServerError)
+		http.Error(w, ErrReadImage.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	imageFilename := generatePhotoFilename(request.Email)
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
 		c.log.Error("failed to save image", slog.String("error", err.Error()))
-		http.Error(w, "failed to save image", http.StatusInternalServerError)
+		http.Error(w, ErrSaveImage.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	userID, err := c.client.Register(r.Context(), request.Email, request.Password, request.SteamURL, imageFilename)
 	if err != nil {
 		c.log.Error("sso.Register failed", slog.String("error", err.Error()))
-		http.Error(w, "failed to register", http.StatusInternalServerError)
+		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(userID); err != nil {
-		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrRegister.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -113,26 +113,26 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	var req ssov1.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		c.log.Error("ошибка парсинга JSON тела", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, "invalid JSON", http.StatusBadRequest)
+		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if req.Email == "" || req.Password == "" || req.AppId == 0 {
-		http.Error(w, "missing email or password or app id", http.StatusBadRequest)
+		http.Error(w, ErrInvalidRequest.Error(), http.StatusBadRequest)
 		return
 	}
 
 	token, err := c.client.Login(r.Context(), req.Email, req.Password, req.AppId)
 	if err != nil {
 		c.log.Error("sso.Login failed", slog.String("error", err.Error()))
-		http.Error(w, "failed to login", http.StatusInternalServerError)
+		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(token); err != nil {
-		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrLogin.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -146,7 +146,7 @@ type GetUserInfoResponse struct {
 func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
 	if !ok {
-		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
 	}
 
@@ -156,14 +156,14 @@ func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	user.Email, user.SteamURL, user.Photo, err = c.client.GetUserInfo(r.Context(), userID)
 	if err != nil {
 		c.log.Error("sso.GetUserInfo failed", slog.String("error", err.Error()))
-		http.Error(w, "failed to get user info", http.StatusInternalServerError)
+		http.Error(w, ErrGetUserInfo.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(user); err != nil {
-		c.log.Error(ErrGetGames.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrGetUserInfo.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetUserInfo.Error(), http.StatusInternalServerError)
 		return
 	}
 }
