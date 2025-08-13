@@ -300,7 +300,10 @@ func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 	fmt.Println("ОБНОВЛЕНИЕ")
 
 	var existing models.UserGames
-	err := s.storage.DB.Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).First(&existing).Error
+	err := s.storage.DB.
+		Table("user_games").
+		Where("user_id = ? AND game_id = ?", ug.UserID, ug.GameID).
+		First(&existing).Error
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		fmt.Println("СОЗДАНИЕ")
 		return s.CreateUserGame(ug)
@@ -311,10 +314,11 @@ func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 	existing.Priority = ug.Priority
 	existing.Status = ug.Status
 
-	if err := s.storage.DB.Save(&existing).Error; err != nil {
+	if err := s.storage.DB.Table("user_games").Save(&existing).Error; err != nil {
+		fmt.Println("НУ Я ТУТ")
 		return fmt.Errorf("%s: %w", op, err)
 	}
-
+	fmt.Println("ВСЁ ЧЕТЕНЬКО")
 	return nil
 }
 
