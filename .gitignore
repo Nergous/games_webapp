@@ -30,3 +30,5 @@ server/config/local.yaml
 # Editor/IDE
 # .idea/
 # .vscode/
+
+update.sh
