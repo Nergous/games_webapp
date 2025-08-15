@@ -32,7 +32,7 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
-			http.Error(w, "Missing of invalid Authorization header", http.StatusUnauthorized)
+			http.Error(w, "Отсутствует или неправильный заголовок авторизации", http.StatusUnauthorized)
 			return
 		}
 

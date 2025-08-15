@@ -51,4 +51,8 @@ var (
 	ErrMissingSteamURL = errors.New("отсутствует email в запросе")
 
 	ErrGetUserInfo = errors.New("ошибка при получении информации о пользователе")
+	ErrForbidden   = errors.New("недостаточно прав")
+
+	ErrGetUsers   = errors.New("ошибка при получении пользователей")
+	ErrUpdateUser = errors.New("ошибка при обновлении пользователя")
 )

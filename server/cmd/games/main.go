@@ -77,7 +77,7 @@ func main() {
 
 	log.Info("database init")
 
-	r := routes.SetupRouter(log, storage, uploadsStorage, authMiddleware, ssoClient)
+	r := routes.SetupRouter(log, storage, uploadsStorage, authMiddleware, ssoClient, cfg.Cors)
 
 	log.Info("routes init")
 

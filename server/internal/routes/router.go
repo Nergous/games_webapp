@@ -26,13 +26,14 @@ func SetupRouter(
 	uploads *uploads.Uploads,
 	authMiddleware *games_middleware.AuthMiddleware,
 	ssoClient *ssogrpc.Client,
+	allowedCors []string,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:3000"},
+		AllowedOrigins:   allowedCors,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: true,
@@ -47,6 +48,14 @@ func SetupRouter(
 	r.Route("/api", func(r chi.Router) {
 		r.Post("/register", authController.Register)
 		r.Post("/login", authController.Login)
+		r.Route("/users", func(r chi.Router) {
+			r.Group(func(r chi.Router) {
+				r.Use(authMiddleware.ValidateToken)
+				r.Get("/", authController.GetUsers)
+				r.Put("/{id}", authController.UpdateUser)
+			})
+		})
+
 		r.Route("/games", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware.ValidateToken)
@@ -54,6 +63,7 @@ func SetupRouter(
 				r.Get("/user/info", authController.GetUserInfo)
 				r.Get("/user/stats", gameController.GetGameStats)
 				r.Get("/user", gameController.GetUserGames)
+
 				r.Get("/search", gameController.SearchAllGames)
 				r.Post("/", gameController.Create)
 				r.Post("/multi", gameController.CreateMultiGamesDB)
@@ -68,8 +78,6 @@ func SetupRouter(
 		})
 	})
 
-	r.Get("/swagger/*", httpSwagger.Handler(
-		httpSwagger.URL("http://localhost:8082/swagger/doc.json"),
-	))
+	r.Get("/swagger/*", httpSwagger.WrapHandler)
 	return r
 }
