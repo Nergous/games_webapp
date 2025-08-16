@@ -123,5 +123,11 @@ func (c *Client) GetUsers(ctx context.Context) (*ssov1.GetAllUserResponse, error
 }
 
 func (c *Client) UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) (*ssov1.UpdateUserResponse, error) {
-	return nil, nil
+	resp, err := c.api.UpdateUser(ctx, user)
+	if err != nil {
+		c.log.Error("sso.UpdateUser failed", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return resp, nil
 }
