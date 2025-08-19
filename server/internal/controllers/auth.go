@@ -183,7 +183,7 @@ type User struct {
 }
 
 type GetUsersResponse struct {
-	users []User
+	Users []User `json:"users"`
 }
 
 func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
@@ -215,7 +215,7 @@ func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	for _, user := range resp.User {
-		users.users = append(users.users, User{
+		users.Users = append(users.Users, User{
 			Id:          user.Id,
 			Email:       user.Email,
 			SteamURL:    user.SteamUrl,
@@ -225,6 +225,11 @@ func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(users); err != nil {
+		c.log.Error(ErrGetUserInfo.Error(), slog.String("error", err.Error()))
+		http.Error(w, ErrGetUserInfo.Error(), http.StatusInternalServerError)
+		return
+	}
 }
 
 func (c *AuthController) UpdateUser(w http.ResponseWriter, r *http.Request) {
