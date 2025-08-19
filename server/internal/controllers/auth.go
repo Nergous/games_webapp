@@ -28,7 +28,7 @@ type GRPCClient interface {
 	Login(ctx context.Context, email, password string, appID int32) (string, error)
 	Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (int64, error)
 	GetUserInfo(ctx context.Context, userID int64) (email, steamURL, pathToPhoto string, err error)
-	GetUsers(ctx context.Context) (*ssov1.GetAllUserResponse, error)
+	GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error)
 	UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) (*ssov1.UpdateUserResponse, error)
 }
 

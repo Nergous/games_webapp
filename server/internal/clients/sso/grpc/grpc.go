@@ -112,8 +112,8 @@ func (c *Client) GetUserInfo(ctx context.Context, userID int64) (string, string,
 	return resp.GetEmail(), resp.GetSteamUrl(), resp.GetPathToPhoto(), nil
 }
 
-func (c *Client) GetUsers(ctx context.Context) (*ssov1.GetAllUserResponse, error) {
-	resp, err := c.api.GetAllUser(ctx, &ssov1.GetAllUserRequest{})
+func (c *Client) GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error) {
+	resp, err := c.api.GetAllUsers(ctx, &ssov1.GetAllUsersRequest{})
 	if err != nil {
 		c.log.Error("sso.GetAllUser failed", slog.String("error", err.Error()))
 		return nil, err

@@ -16,6 +16,8 @@ github.com/Nergous/sso_protos v0.0.0-20250814114104-7aac05d5ffd3 h1:K88Y1qFkGKsU
 github.com/Nergous/sso_protos v0.0.0-20250814114104-7aac05d5ffd3/go.mod h1:hia4LYfH/EpDNULExgfdFpnAb2v/rn8TXwsHvhnjh2c=
 github.com/Nergous/sso_protos v0.0.0-20250816092902-b98a65cd35e5 h1:0GiS8QsUpKqWhgO2vk139aDiHOsJnl/dYuXCSK9abVw=
 github.com/Nergous/sso_protos v0.0.0-20250816092902-b98a65cd35e5/go.mod h1:rXFwTWrdV1sK7VCoHdTGt2ORBj7c0q7TwSEBCZtw1Gw=
+github.com/Nergous/sso_protos v0.0.0-20250819171115-32d3e7c9be60 h1:vjDX3CCMUeb+jWdQ/YjinNBt8aVKo+lpM6YlInEWci8=
+github.com/Nergous/sso_protos v0.0.0-20250819171115-32d3e7c9be60/go.mod h1:rXFwTWrdV1sK7VCoHdTGt2ORBj7c0q7TwSEBCZtw1Gw=
 github.com/PuerkitoBio/goquery v1.10.3 h1:pFYcNSqHxBD06Fpj/KsbStFRsgRATgnf3LeXiUkhzPo=
 github.com/PuerkitoBio/goquery v1.10.3/go.mod h1:tMUX0zDMHXYlAQk6p35XxQMqMweEKB7iK7iLNd4RH4Y=
 github.com/andybalholm/cascadia v1.3.3 h1:AG2YHrzJIm4BZ19iwJ/DAua6Btl3IwJX+VI4kktS1LM=
