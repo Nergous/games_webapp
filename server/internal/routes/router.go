@@ -1,6 +1,7 @@
 package routes
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -48,6 +49,13 @@ func SetupRouter(
 
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			response := map[string]interface{}{
+				"status": "ok",
+			}
+			w.Header().Set("Content-Type", "application/json")
+			if err := json.NewEncoder(w).Encode(response); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+			}
 			w.WriteHeader(http.StatusOK)
 		})
 		r.Post("/register", authController.Register)
