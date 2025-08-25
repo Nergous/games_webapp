@@ -2,6 +2,7 @@ package routes
 
 import (
 	"log/slog"
+	"net/http"
 
 	"games_webapp/internal/controllers"
 	games_middleware "games_webapp/internal/middleware"
@@ -46,6 +47,7 @@ func SetupRouter(
 	authController := controllers.NewAuthController(log, ssoClient, uploads)
 
 	r.Route("/api", func(r chi.Router) {
+		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {})
 		r.Post("/register", authController.Register)
 		r.Post("/login", authController.Login)
 		r.Route("/users", func(r chi.Router) {
