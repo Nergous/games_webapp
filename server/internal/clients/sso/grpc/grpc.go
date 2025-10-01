@@ -82,14 +82,36 @@ func (c *Client) Register(ctx context.Context, email, password, steamURL, pathTo
 	return resp.GetUserId(), nil
 }
 
-func (c *Client) Login(ctx context.Context, email, password string, appID int32) (string, error) {
+func (c *Client) Login(ctx context.Context, email, password string, appID int32) (accessToken string, refreshToken string, err error) {
 	resp, err := c.api.Login(ctx, &ssov1.LoginRequest{Email: email, Password: password, AppId: appID})
 	if err != nil {
 		c.log.Error("sso.Login failed", slog.String("error", err.Error()))
-		return "", err
+		return "", "", err
 	}
 
-	return resp.GetToken(), nil
+	return resp.GetAccessToken(), resp.GetRefreshToken(), nil
+}
+
+func (c *Client) Logout(ctx context.Context, accessToken string) error {
+	_, err := c.api.Logout(ctx, &ssov1.LogoutRequest{Token: accessToken})
+	if err != nil {
+		c.log.Error("sso.Logout failed", slog.String("error", err.Error()))
+		return err
+	}
+
+	return nil
+}
+
+func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, err error) {
+	resp, err := c.api.Refresh(ctx, &ssov1.RefreshRequest{
+		RefreshToken: refreshToken,
+	})
+	if err != nil {
+		c.log.Error("sso.Refresh failed", slog.String("error", err.Error()))
+		return "", "", err
+	}
+
+	return resp.GetAccessToken(), resp.GetRefreshToken(), nil
 }
 
 func (c *Client) IsAdmin(ctx context.Context, userID int64) (bool, error) {

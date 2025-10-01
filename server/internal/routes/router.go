@@ -60,6 +60,9 @@ func SetupRouter(
 		})
 		r.Post("/register", authController.Register)
 		r.Post("/login", authController.Login)
+		r.Post("/logout", authController.Logout)
+		r.Post("/refresh", authController.Refresh)
+
 		r.Route("/users", func(r chi.Router) {
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware.ValidateToken)

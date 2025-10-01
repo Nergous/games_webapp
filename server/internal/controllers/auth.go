@@ -25,11 +25,12 @@ type AuthController struct {
 }
 
 type GRPCClient interface {
-	Login(ctx context.Context, email, password string, appID int32) (string, error)
+	Login(ctx context.Context, email, password string, appID int32) (string, string, error)
 	Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (int64, error)
 	GetUserInfo(ctx context.Context, userID int64) (email, steamURL, pathToPhoto string, err error)
 	GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error)
 	UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) (*ssov1.UpdateUserResponse, error)
+	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 }
 
 func NewAuthController(log *slog.Logger, client GRPCClient, uploads uploads.IUploads) *AuthController {
@@ -41,6 +42,19 @@ type RegisterRequest struct {
 	Password string `json:"password"`
 	SteamURL string `json:"steam_url"`
 }
+
+type LoginResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
+type RefreshResponse struct {
+	AccessToken string `json:"access_token"`
+}
+
+const (
+	refreshTokenCookieName = "refresh_token"
+	refreshTokenMaxAge     = 30 * 24 * 60 * 60
+)
 
 func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.auth.Register"
@@ -128,17 +142,117 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	cleanedEmail := strings.ToLower(strings.TrimSpace(req.Email))
 
-	token, err := c.client.Login(r.Context(), cleanedEmail, req.Password, req.AppId)
+	accessToken, refreshToken, err := c.client.Login(r.Context(), cleanedEmail, req.Password, req.AppId)
 	if err != nil {
 		c.log.Error("sso.Login failed", slog.String("error", err.Error()))
 		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
 		return
 	}
 
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    refreshToken,
+		Path:     "/",
+		MaxAge:   refreshTokenMaxAge,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	response := LoginResponse{
+		AccessToken: accessToken,
+	}
+
 	w.WriteHeader(http.StatusOK)
-	if err := json.NewEncoder(w).Encode(token); err != nil {
+	if err := json.NewEncoder(w).Encode(response); err != nil {
 		c.log.Error(ErrLogin.Error(), slog.String("error", err.Error()))
 		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.auth.Logout"
+
+	// Получаем refresh token из cookie для удаления его из базы
+	refreshCookie, err := r.Cookie(refreshTokenCookieName)
+	if err == nil && refreshCookie.Value != "" {
+		// Здесь можно добавить логику для удаления refresh token из базы данных
+		// через отдельный метод в gRPC клиенте, если это необходимо
+	}
+
+	// Удаляем refresh token cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    "",
+		Path:     "/",
+		MaxAge:   -1, // Удалить cookie
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "logged out successfully"})
+}
+
+func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.auth.Refresh"
+
+	// Получаем refresh token из cookie
+	refreshCookie, err := r.Cookie(refreshTokenCookieName)
+	if err != nil {
+		c.log.Error("refresh token cookie not found", slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, "refresh token required", http.StatusUnauthorized)
+		return
+	}
+
+	refreshToken := refreshCookie.Value
+	if refreshToken == "" {
+		http.Error(w, "refresh token is empty", http.StatusUnauthorized)
+		return
+	}
+
+	// Обновляем токены
+	accessToken, newRefreshToken, err := c.client.RefreshToken(r.Context(), refreshToken)
+	if err != nil {
+		c.log.Error("sso.Refresh failed", slog.String("error", err.Error()))
+
+		// Если refresh token невалидный, удаляем cookie
+		http.SetCookie(w, &http.Cookie{
+			Name:     refreshTokenCookieName,
+			Value:    "",
+			Path:     "/",
+			MaxAge:   -1, // Удалить cookie
+			HttpOnly: true,
+			Secure:   false,
+			SameSite: http.SameSiteNoneMode,
+		})
+
+		http.Error(w, "failed to refresh tokens", http.StatusUnauthorized)
+		return
+	}
+
+	// Устанавливаем новый refresh token в cookie
+	http.SetCookie(w, &http.Cookie{
+		Name:     refreshTokenCookieName,
+		Value:    newRefreshToken,
+		Path:     "/",
+		MaxAge:   refreshTokenMaxAge,
+		HttpOnly: true,
+		Secure:   false,
+		SameSite: http.SameSiteNoneMode,
+	})
+
+	// Возвращаем новый access token
+	response := RefreshResponse{
+		AccessToken: accessToken,
+	}
+
+	w.WriteHeader(http.StatusOK)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		c.log.Error("failed to encode response", slog.String("error", err.Error()))
+		http.Error(w, "internal server error", http.StatusInternalServerError)
 		return
 	}
 }
