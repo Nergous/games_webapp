@@ -150,13 +150,14 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	}
 
 	http.SetCookie(w, &http.Cookie{
-		Name:     refreshTokenCookieName,
-		Value:    refreshToken,
-		Path:     "/",
-		MaxAge:   refreshTokenMaxAge,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
+		Name:        refreshTokenCookieName,
+		Value:       refreshToken,
+		Path:        "/",
+		MaxAge:      refreshTokenMaxAge,
+		HttpOnly:    true,
+		Secure:      true,
+		SameSite:    http.SameSiteNoneMode,
+		Partitioned: true,
 	})
 
 	response := LoginResponse{
@@ -181,13 +182,14 @@ func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 
 	// Удаляем refresh token cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     refreshTokenCookieName,
-		Value:    "",
-		Path:     "/",
-		MaxAge:   -1, // Удалить cookie
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
+		Name:        refreshTokenCookieName,
+		Value:       "",
+		Path:        "/",
+		MaxAge:      -1, // Удалить cookie
+		HttpOnly:    true,
+		Secure:      true,
+		SameSite:    http.SameSiteNoneMode,
+		Partitioned: true,
 	})
 
 	w.WriteHeader(http.StatusOK)
@@ -218,13 +220,14 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 
 		// Если refresh token невалидный, удаляем cookie
 		http.SetCookie(w, &http.Cookie{
-			Name:     refreshTokenCookieName,
-			Value:    "",
-			Path:     "/",
-			MaxAge:   -1, // Удалить cookie
-			HttpOnly: true,
-			Secure:   true,
-			SameSite: http.SameSiteNoneMode,
+			Name:        refreshTokenCookieName,
+			Value:       "",
+			Path:        "/",
+			MaxAge:      -1, // Удалить cookie
+			HttpOnly:    true,
+			Secure:      true,
+			SameSite:    http.SameSiteNoneMode,
+			Partitioned: true,
 		})
 
 		http.Error(w, "failed to refresh tokens", http.StatusUnauthorized)
@@ -233,13 +236,14 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 
 	// Устанавливаем новый refresh token в cookie
 	http.SetCookie(w, &http.Cookie{
-		Name:     refreshTokenCookieName,
-		Value:    newRefreshToken,
-		Path:     "/",
-		MaxAge:   refreshTokenMaxAge,
-		HttpOnly: true,
-		Secure:   true,
-		SameSite: http.SameSiteNoneMode,
+		Name:        refreshTokenCookieName,
+		Value:       newRefreshToken,
+		Path:        "/",
+		MaxAge:      refreshTokenMaxAge,
+		HttpOnly:    true,
+		Secure:      true,
+		SameSite:    http.SameSiteNoneMode,
+		Partitioned: true,
 	})
 
 	// Возвращаем новый access token
