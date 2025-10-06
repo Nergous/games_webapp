@@ -26,6 +26,7 @@ type AuthController struct {
 
 type GRPCClient interface {
 	Login(ctx context.Context, email, password string, appID int32) (string, string, error)
+	Logout(ctx context.Context, token string) error
 	Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (int64, error)
 	GetUserInfo(ctx context.Context, userID int64) (email, steamURL, pathToPhoto string, err error)
 	GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error)
@@ -176,8 +177,7 @@ func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	// Получаем refresh token из cookie для удаления его из базы
 	refreshCookie, err := r.Cookie(refreshTokenCookieName)
 	if err == nil && refreshCookie.Value != "" {
-		// Здесь можно добавить логику для удаления refresh token из базы данных
-		// через отдельный метод в gRPC клиенте, если это необходимо
+		c.client.Logout(r.Context(), refreshCookie.Value)
 	}
 
 	// Удаляем refresh token cookie

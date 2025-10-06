@@ -92,8 +92,8 @@ func (c *Client) Login(ctx context.Context, email, password string, appID int32)
 	return resp.GetAccessToken(), resp.GetRefreshToken(), nil
 }
 
-func (c *Client) Logout(ctx context.Context, accessToken string) error {
-	_, err := c.api.Logout(ctx, &ssov1.LogoutRequest{Token: accessToken})
+func (c *Client) Logout(ctx context.Context, refreshToken string) error {
+	_, err := c.api.Logout(ctx, &ssov1.LogoutRequest{Token: refreshToken})
 	if err != nil {
 		c.log.Error("sso.Logout failed", slog.String("error", err.Error()))
 		return err

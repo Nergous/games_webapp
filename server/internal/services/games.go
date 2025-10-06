@@ -281,7 +281,6 @@ func (s *GameService) CreateUserGame(ug *models.UserGames) error {
 	fmt.Println("ТУТАЧКИ")
 	if errors.Is(err, gorm.ErrRecordNotFound) {
 		if err := s.storage.DB.Create(ug).Error; err != nil {
-			fmt.Println("НУ ПИЗДЕЦ")
 			return fmt.Errorf("%s: %w", op, err)
 		}
 		fmt.Println("ВСЁ НОРМ")
