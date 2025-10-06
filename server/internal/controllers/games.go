@@ -698,6 +698,68 @@ func getFormValue(r *http.Request, gameData map[string]interface{}, key string) 
 	return ""
 }
 
+func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.games.DeleteUserGame"
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok || userID <= 0 {
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		http.Error(w, ErrInvalidURL.Error(), http.StatusBadRequest)
+		return
+	}
+	id := parts[3]
+
+	idInt, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		c.log.Error(
+			ErrInvalidID.Error(),
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		return
+	}
+
+	// Получаем игру по ID
+	game, err := c.service.GetByID(idInt)
+	if err != nil {
+		c.log.Error(
+			"Не удалось получить игру для удаления",
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrGetGame.Error(), http.StatusNotFound)
+		return
+	}
+
+	if game == nil {
+		c.log.Error(
+			"Игра не найдена",
+			slog.String("operation", op),
+			slog.String("id", id))
+		http.Error(w, ErrGetGame.Error(), http.StatusNotFound)
+		return
+	}
+
+	err = c.service.DeleteUserGame(userID, idInt)
+	if err != nil {
+		c.log.Error(
+			ErrDeleteUserGame.Error(),
+			slog.String("operation", op),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrDeleteUserGame.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusNoContent)
+}
+
 func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.Delete"
 

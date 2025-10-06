@@ -88,6 +88,7 @@ func SetupRouter(
 					r.Put("/status", gameController.UpdateStatus)
 					r.Put("/priority", gameController.UpdatePriority)
 					r.Delete("/", gameController.Delete)
+					r.Delete("/delete-user-game", gameController.DeleteUserGame)
 				})
 			})
 		})
