@@ -155,8 +155,8 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   refreshTokenMaxAge,
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
 	})
 
 	response := LoginResponse{
@@ -186,8 +186,8 @@ func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1, // Удалить cookie
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
 	})
 
 	w.WriteHeader(http.StatusOK)
@@ -223,8 +223,8 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 			Path:     "/",
 			MaxAge:   -1, // Удалить cookie
 			HttpOnly: true,
-			Secure:   false,
-			SameSite: http.SameSiteLaxMode,
+			Secure:   true,
+			SameSite: http.SameSiteNoneMode,
 		})
 
 		http.Error(w, "failed to refresh tokens", http.StatusUnauthorized)
@@ -238,8 +238,8 @@ func (c *AuthController) Refresh(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   refreshTokenMaxAge,
 		HttpOnly: true,
-		Secure:   false,
-		SameSite: http.SameSiteLaxMode,
+		Secure:   true,
+		SameSite: http.SameSiteNoneMode,
 	})
 
 	// Возвращаем новый access token
