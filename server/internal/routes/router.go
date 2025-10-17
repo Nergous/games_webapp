@@ -5,6 +5,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"games_webapp/internal/config"
 	"games_webapp/internal/controllers"
 	games_middleware "games_webapp/internal/middleware"
 	"games_webapp/internal/services"
@@ -15,10 +16,6 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	_ "games_webapp/docs"
-
-	httpSwagger "github.com/swaggo/http-swagger"
-
 	ssogrpc "games_webapp/internal/clients/sso/grpc"
 )
 
@@ -28,14 +25,14 @@ func SetupRouter(
 	uploads *uploads.Uploads,
 	authMiddleware *games_middleware.AuthMiddleware,
 	ssoClient *ssogrpc.Client,
-	allowedCors []string,
+	cfg *config.Config,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.Logger)
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   allowedCors,
+		AllowedOrigins:   cfg.Cors,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: true,
@@ -43,7 +40,7 @@ func SetupRouter(
 	}))
 
 	gameService := services.NewGameService(storage, log)
-	gameController := controllers.NewGameController(gameService, log, uploads)
+	gameController := controllers.NewGameController(gameService, log, uploads, cfg.TwitchClientId, cfg.TwitchClientSecret)
 
 	authController := controllers.NewAuthController(log, ssoClient, uploads)
 
@@ -78,6 +75,7 @@ func SetupRouter(
 				r.Get("/user/info", authController.GetUserInfo)
 				r.Get("/user/stats", gameController.GetGameStats)
 				r.Get("/user", gameController.GetUserGames)
+				r.Post("/twitch", gameController.CreateMultiGamesIGDB)
 
 				r.Get("/search", gameController.SearchAllGames)
 				r.Post("/", gameController.Create)
@@ -94,6 +92,5 @@ func SetupRouter(
 		})
 	})
 
-	r.Get("/swagger/*", httpSwagger.WrapHandler)
 	return r
 }

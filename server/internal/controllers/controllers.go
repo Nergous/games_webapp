@@ -7,8 +7,6 @@ var (
 
 	ErrNotFound = errors.New("not found")
 
-	ErrTooManyGames = errors.New("нельзя создать более 100 игр одновременно")
-
 	ErrGetGames     = errors.New("ошибка при получении игр")
 	ErrGetGame      = errors.New("ошибка при получении игры по id")
 	ErrGetUserGames = errors.New("ошибка при получении игр пользователя")
@@ -17,9 +15,9 @@ var (
 	ErrMissingImage = errors.New("отсутствует картинка в запросе")
 	ErrMissingTitle = errors.New("отсутствует title в запросе")
 
-	ErrInvalidPriority = errors.New("не валидный приоритет")
-	ErrInvalidURL      = errors.New("не валидный url")
-	ErrInvalidID       = errors.New("не валидный id")
+	ErrInvalidPriority = errors.New("неверный приоритет")
+	ErrInvalidURL      = errors.New("неверный url")
+	ErrInvalidID       = errors.New("неверный id")
 
 	ErrParsingForm    = errors.New("ошибка при парсинге формы")
 	ErrParsingJSON    = errors.New("ошибка при парсинге json")
@@ -40,7 +38,8 @@ var (
 	ErrDeleteGame     = errors.New("ошибка при удалении игры")
 	ErrDeleteUserGame = errors.New("ошибка при удалении связки игры и пользователя")
 
-	ErrNoGamesNames  = errors.New("нет названий игр")
+	ErrNoGamesNames  = errors.New("пустой запрос: нет игр")
+	ErrTooManyGames  = errors.New("нельзя создать более 100 игр одновременно")
 	ErrPartialCreate = errors.New("ошибка при множественном создании игр")
 	ErrInvalidSource = errors.New("неверный источник")
 
@@ -55,4 +54,6 @@ var (
 
 	ErrGetUsers   = errors.New("ошибка при получении пользователей")
 	ErrUpdateUser = errors.New("ошибка при обновлении пользователя")
+
+	ErrLoginTwitch = errors.New("ошибка при логине через twitch")
 )

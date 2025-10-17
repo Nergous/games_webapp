@@ -77,7 +77,7 @@ func main() {
 
 	log.Info("database init")
 
-	r := routes.SetupRouter(log, storage, uploadsStorage, authMiddleware, ssoClient, cfg.Cors)
+	r := routes.SetupRouter(log, storage, uploadsStorage, authMiddleware, ssoClient, cfg)
 
 	log.Info("routes init")
 
@@ -136,12 +136,3 @@ func setupLogger(env string) *slog.Logger {
 	}
 	return log
 }
-
-// @title Game WebApp API
-// @version 1.0
-// @description API для управления библиотекой игр пользователей
-// @contact.name Nergous
-// @contact.email Nergous6@yandex.ru
-
-// @host https://games.nergous.ru
-// @BasePath /api

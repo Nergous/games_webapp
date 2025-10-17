@@ -11,12 +11,14 @@ import (
 )
 
 type Config struct {
-	Env         string `yaml:"env" env:"ENV" env-required:"true"`
-	UploadsPath string `yaml:"uploads_path" env:"UPLOADS_PATH" env-required:"true"`
-	Database    `yaml:"database"`
-	HTTPServer  `yaml:"http_server"`
-	Clients     ClientsConfig `yaml:"clients"`
-	AppSecret   string        `yaml:"app_secret" env:"APP_SECRET" env-required:"true"`
+	Env                string `yaml:"env" env:"ENV" env-required:"true"`
+	UploadsPath        string `yaml:"uploads_path" env:"UPLOADS_PATH" env-required:"true"`
+	TwitchClientId     string `yaml:"twitch_client_id" env:"TWITCH_CLIENT_ID" env-required:"true"`
+	TwitchClientSecret string `yaml:"twitch_client_secret" env:"TWITCH_CLIENT_SECRET" env-required:"true"`
+	Database           `yaml:"database"`
+	HTTPServer         `yaml:"http_server"`
+	Clients            ClientsConfig `yaml:"clients"`
+	AppSecret          string        `yaml:"app_secret" env:"APP_SECRET" env-required:"true"`
 }
 
 type Database struct {
