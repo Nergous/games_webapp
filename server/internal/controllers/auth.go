@@ -32,6 +32,7 @@ type GRPCClient interface {
 	GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error)
 	UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) (*ssov1.UpdateUserResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
+	DeleteUser(ctx context.Context, user *ssov1.DeleteUserRequest) (*ssov1.DeleteUserResponse, error)
 }
 
 func NewAuthController(log *slog.Logger, client GRPCClient, uploads uploads.IUploads) *AuthController {
@@ -382,6 +383,42 @@ func (c *AuthController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		c.log.Error("sso.UpdateUser failed", slog.String("error", err.Error()))
 		http.Error(w, ErrUpdateUser.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.WriteHeader(http.StatusOK)
+}
+
+func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
+	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	if !ok {
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	isAdmin, ok := r.Context().Value(middleware.IsAdminKey).(bool)
+	if !ok {
+		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
+		return
+	}
+
+	if !isAdmin {
+		http.Error(w, ErrForbidden.Error(), http.StatusForbidden)
+		return
+	}
+
+	var user *ssov1.DeleteUserRequest
+
+	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+		c.log.Error("ошибка парсинга JSON тела", slog.String("error", err.Error()))
+		http.Error(w, ErrDeleteUser.Error(), http.StatusBadRequest)
+		return
+	}
+
+	_, err := c.client.DeleteUser(r.Context(), user)
+	if err != nil {
+		c.log.Error("sso.DeleteUser failed", slog.String("error", err.Error()))
+		http.Error(w, ErrDeleteUser.Error(), http.StatusInternalServerError)
 		return
 	}
 

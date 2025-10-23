@@ -55,6 +55,7 @@ var (
 
 	ErrGetUsers   = errors.New("ошибка при получении пользователей")
 	ErrUpdateUser = errors.New("ошибка при обновлении пользователя")
+	ErrDeleteUser = errors.New("ошибка при удалении пользователя")
 
 	ErrLoginTwitch = errors.New("ошибка при логине через twitch")
 	ErrUnknown     = errors.New("неизвестная ошибка")

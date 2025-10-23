@@ -65,6 +65,7 @@ func SetupRouter(
 				r.Use(authMiddleware.ValidateToken)
 				r.Get("/", authController.GetUsers)
 				r.Put("/{id}", authController.UpdateUser)
+				r.Delete("/{id}", authController.DeleteUser)
 			})
 		})
 

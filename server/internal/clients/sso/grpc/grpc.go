@@ -153,3 +153,13 @@ func (c *Client) UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) 
 
 	return resp, nil
 }
+
+func (c *Client) DeleteUser(ctx context.Context, user *ssov1.DeleteUserRequest) (*ssov1.DeleteUserResponse, error) {
+	resp, err := c.api.DeleteUser(ctx, user)
+	if err != nil {
+		c.log.Error("sso.DeleteUser failed", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return resp, nil
+}
