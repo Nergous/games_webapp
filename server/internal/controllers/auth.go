@@ -8,6 +8,7 @@ import (
 	"io"
 	"log/slog"
 	"net/http"
+	"strconv"
 	"strings"
 	"time"
 	"unicode"
@@ -409,11 +410,13 @@ func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 
 	var user *ssov1.DeleteUserRequest
 
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
-		c.log.Error("ошибка парсинга JSON тела", slog.String("error", err.Error()))
-		http.Error(w, ErrDeleteUser.Error(), http.StatusBadRequest)
+	parts := strings.Split(r.URL.Path, "/")
+	if len(parts) < 4 {
+		c.log.Error(ErrInvalidURL.Error(), slog.String("operation", "controllers.auth.DeleteUser"))
+		http.Error(w, ErrInvalidURL.Error(), http.StatusBadRequest)
 		return
 	}
+	user.Id, _ = strconv.ParseInt(parts[3], 10, 64)
 
 	_, err := c.client.DeleteUser(r.Context(), user)
 	if err != nil {
