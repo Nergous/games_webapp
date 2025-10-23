@@ -593,7 +593,7 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 
 	result, err := c.getDataFromIGDB(name, access)
 	if err != nil {
-		return nil, err
+		return nil, ErrCreateGame
 	}
 
 	imageFilename, err := c.downloadAndSaveImage(result["cover_url"])
