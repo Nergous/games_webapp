@@ -301,7 +301,7 @@ type RequestData struct {
 
 type GameError struct {
 	Name string `json:"name"`
-	Err  error  `json:"error"`
+	Err  string `json:"error"`
 }
 
 type MultiGameResponse struct {
@@ -520,7 +520,7 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 
 			game, err := c.createThroughIGDB(ctx, name, access)
 			if err != nil {
-				errChan <- GameError{Name: name, Err: err}
+				errChan <- GameError{Name: name, Err: err.Error()}
 				return
 			}
 			resultsChan <- game
@@ -564,7 +564,7 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 			slog.Int("error_count", len(errors)),
 		)
 		for _, err := range errors {
-			c.log.Warn(ErrPartialCreate.Error(), slog.String("operation", op), slog.String("error", err.Err.Error()))
+			c.log.Warn(ErrPartialCreate.Error(), slog.String("operation", op), slog.String("error", err.Err))
 		}
 	} else {
 		c.log.Info(
