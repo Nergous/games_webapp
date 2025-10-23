@@ -299,9 +299,14 @@ type RequestData struct {
 	Games []RequestGame `json:"games"`
 }
 
+type GameError struct {
+	Name string `json:"name"`
+	Err  error  `json:"error"`
+}
+
 type MultiGameResponse struct {
 	Success []*models.Game `json:"success"`
-	Errors  []string       `json:"errors"`
+	Errors  []*GameError   `json:"errors"`
 }
 
 func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
@@ -496,7 +501,7 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 		maxWorkers  = 10
 		sem         = make(chan struct{}, maxWorkers)
 		wg          sync.WaitGroup
-		errChan     = make(chan error, len(request.Games))
+		errChan     = make(chan GameError, len(request.Games))
 		resultsChan = make(chan *models.Game, len(request.Games))
 	)
 
@@ -515,7 +520,7 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 
 			game, err := c.createThroughIGDB(ctx, name, access)
 			if err != nil {
-				errChan <- err
+				errChan <- GameError{Name: name, Err: err}
 				return
 			}
 			resultsChan <- game
@@ -528,11 +533,11 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 		close(resultsChan)
 	}()
 
-	var errors []string
+	var errors []*GameError
 	var createdGames []*models.Game
 
 	for err := range errChan {
-		errors = append(errors, err.Error())
+		errors = append(errors, &err)
 	}
 
 	for res := range resultsChan {
@@ -559,7 +564,7 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 			slog.Int("error_count", len(errors)),
 		)
 		for _, err := range errors {
-			c.log.Warn(ErrPartialCreate.Error(), slog.String("operation", op), slog.String("error", err))
+			c.log.Warn(ErrPartialCreate.Error(), slog.String("operation", op), slog.String("error", err.Err.Error()))
 		}
 	} else {
 		c.log.Info(
