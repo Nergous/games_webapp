@@ -416,9 +416,24 @@ func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrInvalidURL.Error(), http.StatusBadRequest)
 		return
 	}
-	user.Id, _ = strconv.ParseInt(parts[3], 10, 64)
+	id := parts[3]
 
-	_, err := c.client.DeleteUser(r.Context(), user)
+	idInt, err := strconv.ParseInt(id, 10, 64)
+	if err != nil {
+		c.log.Error(
+			ErrInvalidID.Error(),
+			slog.String("operation", "controllers.auth.DeleteUser"),
+			slog.String("id", id),
+			slog.String("error", err.Error()))
+		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		return
+	}
+
+	user = &ssov1.DeleteUserRequest{
+		Id: idInt,
+	}
+
+	_, err = c.client.DeleteUser(r.Context(), user)
 	if err != nil {
 		c.log.Error("sso.DeleteUser failed", slog.String("error", err.Error()))
 		http.Error(w, ErrDeleteUser.Error(), http.StatusInternalServerError)
