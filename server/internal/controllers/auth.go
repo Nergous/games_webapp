@@ -62,7 +62,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		c.log.Error(ErrParsingForm.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingForm.Error(), http.StatusBadRequest)
+		http.Error(w, ErrRegister.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -73,39 +73,42 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	}
 
 	if request.Email == "" {
-		http.Error(w, ErrMissingEmail.Error(), http.StatusBadRequest)
+		c.log.Error(ErrMissingEmail.Error(), slog.String("operation", op))
+		http.Error(w, ErrRegister.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if request.Password == "" {
-		http.Error(w, ErrMissingPassword.Error(), http.StatusBadRequest)
+		c.log.Error(ErrMissingPassword.Error(), slog.String("operation", op))
+		http.Error(w, ErrRegister.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if request.SteamURL == "" {
-		http.Error(w, ErrMissingSteamURL.Error(), http.StatusBadRequest)
+		c.log.Error(ErrMissingSteamURL.Error(), slog.String("operation", op))
+		http.Error(w, ErrRegister.Error(), http.StatusBadRequest)
 		return
 	}
 
 	file, _, err := r.FormFile("image")
 	if err != nil {
-		c.log.Error("image not provided", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrMissingImage.Error(), http.StatusBadRequest)
+		c.log.Error(ErrMissingImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrRegister.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
 
 	imageData, err := io.ReadAll(file)
 	if err != nil {
-		c.log.Error("failed to read image", slog.String("error", err.Error()))
-		http.Error(w, ErrReadImage.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrReadImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	imageFilename := generatePhotoFilename(request.Email)
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
-		c.log.Error("failed to save image", slog.String("error", err.Error()))
-		http.Error(w, ErrSaveImage.Error(), http.StatusInternalServerError)
+		c.log.Error(ErrSaveImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -113,14 +116,14 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := c.client.Register(r.Context(), cleanedEmail, request.Password, request.SteamURL, imageFilename)
 	if err != nil {
-		c.log.Error("sso.Register failed", slog.String("error", err.Error()))
+		c.log.Error("sso.Register failed", slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(userID); err != nil {
-		c.log.Error(ErrRegister.Error(), slog.String("error", err.Error()))
+		c.log.Error("encoding response", slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrRegister.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -131,13 +134,14 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	var req ssov1.LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
-		c.log.Error("ошибка парсинга JSON тела", slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		c.log.Error(ErrParsingJSON.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrLogin.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if req.Email == "" || req.Password == "" || req.AppId == 0 {
-		http.Error(w, ErrInvalidRequest.Error(), http.StatusBadRequest)
+		c.log.Error(ErrInvalidRequest.Error(), slog.String("operation", op))
+		http.Error(w, ErrLogin.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -145,7 +149,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	accessToken, refreshToken, err := c.client.Login(r.Context(), cleanedEmail, req.Password, req.AppId)
 	if err != nil {
-		c.log.Error("sso.Login failed", slog.String("error", err.Error()))
+		c.log.Error("sso.Login failed", slog.String("error", err.Error()), slog.String("operation", op))
 		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -167,7 +171,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(response); err != nil {
-		c.log.Error(ErrLogin.Error(), slog.String("error", err.Error()))
+		c.log.Error(ErrLogin.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrLogin.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -370,7 +374,7 @@ func (c *AuthController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		c.log.Error("ошибка парсинга JSON тела", slog.String("error", err.Error()))
-		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		http.Error(w, ErrUpdateUser.Error(), http.StatusBadRequest)
 		return
 	}
 

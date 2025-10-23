@@ -18,7 +18,6 @@ import (
 	"games_webapp/internal/middleware"
 	"games_webapp/internal/models"
 	"games_webapp/internal/storage/uploads"
-	"games_webapp/utils"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
@@ -143,7 +142,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	parts := strings.Split(r.URL.Path, "/")
 	if len(parts) < 4 {
 		c.log.Error(ErrInvalidURL.Error(), slog.String("operation", op))
-		http.Error(w, ErrInvalidURL.Error(), http.StatusBadRequest)
+		http.Error(w, ErrGetGames.Error(), http.StatusBadRequest)
 		return
 	}
 	id := parts[3]
@@ -155,7 +154,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		http.Error(w, ErrGetGames.Error(), http.StatusBadRequest)
 		return
 	}
 	res, err := c.service.GetByID(int64(id_s))
@@ -165,7 +164,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -173,7 +172,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusOK)
 	if err := json.NewEncoder(w).Encode(res); err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -215,7 +214,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 	games, total, err := c.service.GetUserGames(userID, status, search, sortBy, sortOrder, page, pageSize)
 	if err != nil {
 		c.log.Error(ErrGetUserGames.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrGetUserGames.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -237,7 +236,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		c.log.Error(ErrGetUserGames.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrGetUserGames.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
 }
@@ -316,7 +315,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(10 << 20); err != nil {
 		c.log.Error(ErrParsingForm.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingForm.Error(), http.StatusBadRequest)
+		http.Error(w, ErrCreateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -338,14 +337,14 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 
 	if request.Priority > 10 {
 		c.log.Error(ErrInvalidPriority.Error(), slog.String("operation", op), slog.String("error", "priority > 10"))
-		http.Error(w, ErrInvalidPriority.Error(), http.StatusBadRequest)
+		http.Error(w, ErrCreateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		c.log.Error(ErrMissingImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrMissingImage.Error(), http.StatusBadRequest)
+		http.Error(w, ErrCreateGame.Error(), http.StatusBadRequest)
 		return
 	}
 	defer file.Close()
@@ -353,14 +352,14 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	imageData, err := io.ReadAll(file)
 	if err != nil {
 		c.log.Error(ErrReadImage.Error(), slog.String("error", err.Error()))
-		http.Error(w, ErrReadImage.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
 	imageFilename := uuid.New().String() + filepath.Ext(header.Filename)
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
 		c.log.Error(ErrSaveImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrSaveImage.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -396,7 +395,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 
 	if err := c.service.CreateUserGame(usrGame); err != nil {
 		c.log.Error(ErrCreateUserGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrCreateUserGame.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -407,218 +406,6 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 		return
 	}
-}
-
-func (c *GameController) CreateMultiGamesDB(w http.ResponseWriter, r *http.Request) {
-	const op = "controllers.games.CreateMultiGamesDB"
-
-	var request RequestData
-
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
-		c.log.Error(ErrParsingJSON.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if len(request.Games) == 0 {
-		c.log.Error(ErrNoGamesNames.Error(), slog.String("operation", op), slog.String("error", "no games names"))
-		http.Error(w, ErrNoGamesNames.Error(), http.StatusBadRequest)
-		return
-	}
-
-	if len(request.Games) > 100 {
-		c.log.Error(ErrTooManyGames.Error(), slog.String("operation", op), slog.String("error", "over 100 games"))
-		http.Error(w, ErrTooManyGames.Error(), http.StatusBadRequest)
-		return
-	}
-
-	var (
-		maxWorkers  = 10
-		sem         = make(chan struct{}, maxWorkers)
-		wg          sync.WaitGroup
-		errChan     = make(chan error, len(request.Games))
-		resultsChan = make(chan *models.Game, len(request.Games))
-	)
-
-	ctx, cancel := context.WithTimeout(r.Context(), 10*time.Second)
-
-	defer cancel()
-
-	for _, game := range request.Games {
-		sem <- struct{}{}
-		wg.Add(1)
-		go func(name, source string) {
-			defer func() {
-				<-sem
-				wg.Done()
-			}()
-
-			game, err := c.createSingleGame(ctx, name, source)
-			if err != nil {
-				errChan <- err
-				return
-			}
-			resultsChan <- game
-		}(game.Name, game.Source)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-		close(resultsChan)
-	}()
-
-	var errors []string
-	var createdGames []*models.Game
-
-	for err := range errChan {
-		errors = append(errors, err.Error())
-	}
-
-	for res := range resultsChan {
-		createdGames = append(createdGames, res)
-	}
-
-	response := MultiGameResponse{
-		Success: createdGames,
-		Errors:  errors,
-	}
-
-	status := http.StatusCreated
-
-	if len(errors) > 0 {
-		if len(createdGames) == 0 {
-			status = http.StatusInternalServerError
-		} else {
-			status = http.StatusMultiStatus
-		}
-		c.log.Warn(
-			ErrPartialCreate.Error(),
-			slog.String("operation", op),
-			slog.Int("success_count", len(createdGames)),
-			slog.Int("error_count", len(errors)),
-		)
-		for _, err := range errors {
-			c.log.Warn(ErrPartialCreate.Error(), slog.String("operation", op), slog.String("error", err))
-		}
-	} else {
-		c.log.Info(
-			"games created",
-			slog.Int("count", len(createdGames)))
-	}
-
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	if err := json.NewEncoder(w).Encode(response); err != nil {
-		c.log.Error(ErrCreateGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
-	}
-}
-
-func (c *GameController) createSingleGame(ctx context.Context, name, source string) (*models.Game, error) {
-	const op = "controllers.games.CreateSingleGameDB"
-	select {
-	case <-ctx.Done():
-		return nil, ctx.Err()
-	default:
-	}
-
-	userID, ok := ctx.Value(middleware.UserIDKey).(int64)
-
-	if !ok || userID <= 0 {
-		return nil, ErrUnauthorized
-	}
-
-	var resultMap map[string]string
-	var err error
-
-	if source != "Wiki" && source != "Steam" {
-		c.log.Error(ErrInvalidSource.Error(), slog.String("operation", op), slog.String("error", "invalid source"))
-		return nil, ErrInvalidSource
-	}
-
-	switch source {
-	case "Wiki":
-		resultMap, err = utils.ProcessWiki(name, c.checkURLInDB, c.log)
-		if err != nil {
-			return nil, err
-		}
-	case "Steam":
-		resultMap, err = utils.ProcessSteam(name, c.checkURLInDB, c.log)
-		if err != nil {
-			return nil, err
-		}
-	}
-
-	imageFilename, err := c.downloadAndSaveImage(resultMap["image"])
-	if err != nil {
-		c.log.Error(
-			"failed to save image",
-			slog.String("operation", op),
-			slog.String("error", err.Error()),
-			slog.String("game", name),
-			slog.String("url", resultMap["image"]),
-		)
-		imageFilename = ""
-	}
-
-	timeNow := time.Now()
-	game := &models.Game{
-		Title:     resultMap["title"],
-		Preambula: resultMap["description"],
-		Image:     imageFilename,
-		Developer: resultMap["developer"],
-		Publisher: resultMap["publisher"],
-		Year:      resultMap["year"],
-		Genre:     resultMap["genre"],
-		URL:       resultMap["url"],
-		CreatedAt: &timeNow,
-		UpdatedAt: &timeNow,
-	}
-
-	createdGame, err := c.service.Create(game)
-	if err != nil {
-		if imageFilename != "" {
-			if delErr := c.uploads.DeleteImage(imageFilename); delErr != nil {
-				c.log.Error(
-					"failed to delete image",
-					slog.String("operation", op),
-					slog.String("error", delErr.Error()),
-					slog.String("filename", imageFilename),
-				)
-			}
-		}
-		c.log.Error(
-			ErrCreateGame.Error(),
-			slog.String("operation", op),
-			slog.String("error", err.Error()),
-			slog.String("game", name))
-		return nil, fmt.Errorf(ErrCreateGame.Error()+" %s : %s", name, err)
-	}
-
-	userGame := &models.UserGames{
-		UserID:   userID,
-		GameID:   createdGame.ID,
-		Status:   models.StatusPlanned,
-		Priority: 0,
-	}
-
-	if err := c.service.CreateUserGame(userGame); err != nil {
-		c.log.Error(
-			ErrCreateGame.Error(),
-			slog.String("operation", op),
-			slog.String("error", err.Error()),
-			slog.String("game", name))
-		return nil, fmt.Errorf(ErrCreateGame.Error()+" %s : %s", name, err)
-	}
-	return game, nil
-}
-
-func (c *GameController) checkURLInDB(url string) error {
-	if err := c.service.GetGameByURL(url); err != nil {
-		return err
-	}
-	return nil
 }
 
 func (c *GameController) downloadAndSaveImage(url string) (string, error) {
@@ -682,13 +469,13 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		c.log.Error(ErrParsingJSON.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		http.Error(w, ErrCreateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
 	if len(request.Games) == 0 {
 		c.log.Error(ErrNoGamesNames.Error(), slog.String("operation", op), slog.String("error", "no games names"))
-		http.Error(w, ErrNoGamesNames.Error(), http.StatusBadRequest)
+		http.Error(w, ErrCreateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -701,7 +488,7 @@ func (c *GameController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Req
 	access, err := c.loginTwitch()
 	if err != nil {
 		c.log.Error(ErrLoginTwitch.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrLoginTwitch.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrCreateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -792,7 +579,7 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 	const op = "controllers.games.createThroughIGDB"
 	select {
 	case <-ctx.Done():
-		return nil, ctx.Err()
+		return nil, ErrUnknown
 	default:
 	}
 
@@ -821,6 +608,9 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 		imageFilename = ""
 	}
 
+	releaseDate := result["release_date"]
+	releaseDate = strings.Split(releaseDate, "-")[0]
+
 	timeNow := time.Now()
 	game := &models.Game{
 		Title:     result["name"],
@@ -828,7 +618,7 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 		Image:     imageFilename,
 		Developer: result["developers"],
 		Publisher: result["publishers"],
-		Year:      result["release_date"],
+		Year:      releaseDate,
 		Genre:     result["genres"],
 		URL:       result["url"],
 		CreatedAt: &timeNow,
@@ -852,10 +642,8 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 			slog.String("operation", op),
 			slog.String("error", err.Error()),
 			slog.String("game", name))
-		return nil, fmt.Errorf(ErrCreateGame.Error()+" %s : %s", name, err)
+		return nil, ErrCreateGame
 	}
-
-	fmt.Printf("%v", createdGame)
 
 	userGame := &models.UserGames{
 		UserID:   userID,
@@ -870,7 +658,7 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 			slog.String("operation", op),
 			slog.String("error", err.Error()),
 			slog.String("game", name))
-		return nil, fmt.Errorf(ErrCreateGame.Error()+" %s : %s", name, err)
+		return nil, ErrCreateGame
 	}
 	return game, nil
 }
@@ -899,7 +687,7 @@ func (c *GameController) getDataFromIGDB(name string, access *TwitchLoginRespons
 	req, err := http.NewRequest("POST", url, bytes.NewBufferString(body))
 	if err != nil {
 		c.log.Error("ошибка при создании запроса", slog.String("operation", op), slog.String("error", err.Error()))
-		return nil, err
+		return nil, ErrCreateGame
 	}
 
 	req.Header.Set("Client-ID", c.twitchClientId)
@@ -916,7 +704,7 @@ func (c *GameController) getDataFromIGDB(name string, access *TwitchLoginRespons
 	bodyBytes, err := io.ReadAll(resp.Body)
 	if err != nil {
 		c.log.Error("ошибка при чтении тела ответа", slog.String("operation", op), slog.String("error", err.Error()))
-		return nil, err
+		return nil, ErrCreateGame
 	}
 
 	var result []struct {
@@ -942,12 +730,12 @@ func (c *GameController) getDataFromIGDB(name string, access *TwitchLoginRespons
 	err = json.Unmarshal(bodyBytes, &result)
 	if err != nil {
 		c.log.Error("ошибка при парсинге тела ответа", slog.String("operation", op), slog.String("error", err.Error()))
-		return nil, err
+		return nil, ErrCreateGame
 	}
 
 	if len(result) == 0 {
 		c.log.Error("игра не найдена", slog.String("operation", op), slog.String("error", "game not found"))
-		return nil, nil
+		return nil, ErrGameNotFound
 	}
 
 	game := result[0]
@@ -1010,7 +798,7 @@ func (c *GameController) loginTwitch() (*TwitchLoginResponse, error) {
 	req, err := http.NewRequest("POST", requestString, nil)
 	if err != nil {
 		c.log.Error(ErrLoginTwitch.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		return nil, err
+		return nil, ErrLogin
 	}
 
 	resp, err := http.DefaultClient.Do(req)
@@ -1069,14 +857,14 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		c.log.Error(ErrInvalidID.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
 	existingGame, err := c.service.GetByID(gameID)
 	if err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -1093,7 +881,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	if strings.HasPrefix(contentType, "multipart/form-data") {
 		if err := r.ParseMultipartForm(10 << 20); err != nil {
 			c.log.Error(ErrParsingForm.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, ErrParsingForm.Error(), http.StatusBadRequest)
+			http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 			return
 		}
 
@@ -1104,14 +892,14 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 			oldFilename, err := c.service.GetByID(gameID)
 			if err != nil {
 				c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-				http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
+				http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
 				return
 			}
 
 			imageData, err := io.ReadAll(file)
 			if err != nil {
 				c.log.Error(ErrReadImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-				http.Error(w, ErrReadImage.Error(), http.StatusBadRequest)
+				http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 				return
 			}
 
@@ -1122,14 +910,14 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 
 			if err := c.uploads.ReplaceImage(imageData, oldFilename.Image, filename); err != nil {
 				c.log.Error(ErrSaveImage.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-				http.Error(w, ErrSaveImage.Error(), http.StatusInternalServerError)
+				http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
 				return
 			}
 		}
 	} else if strings.HasPrefix(contentType, "application/json") {
 		if err := json.NewDecoder(r.Body).Decode(&gameData); err != nil {
 			c.log.Error(ErrParsingJSON.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-			http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+			http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 			return
 		}
 		if img, ok := gameData["image"].(string); ok {
@@ -1222,7 +1010,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		c.log.Error(ErrInvalidID.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1238,7 +1026,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		c.log.Error(ErrParsingJSON.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1295,7 +1083,7 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		c.log.Error(ErrInvalidID.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 		return
 	}
 
@@ -1310,7 +1098,7 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 
 	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
 		c.log.Error(ErrParsingJSON.Error(), slog.String("operation", op), slog.String("error", err.Error()))
-		http.Error(w, ErrParsingJSON.Error(), http.StatusBadRequest)
+		http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 		return
 	}
 	existingUserGame, err := c.service.GetUserGame(userID, gameID)
@@ -1394,7 +1182,7 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 			slog.String("operation", op),
 			slog.String("id", id),
 			slog.String("error", err.Error()))
-		http.Error(w, ErrInvalidID.Error(), http.StatusBadRequest)
+		http.Error(w, ErrDeleteGame.Error(), http.StatusBadRequest)
 		return
 	}
 

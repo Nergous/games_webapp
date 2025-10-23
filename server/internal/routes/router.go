@@ -79,7 +79,6 @@ func SetupRouter(
 
 				r.Get("/search", gameController.SearchAllGames)
 				r.Post("/", gameController.Create)
-				r.Post("/multi", gameController.CreateMultiGamesDB)
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", gameController.GetByID)
 					r.Put("/", gameController.Update)

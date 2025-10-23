@@ -5,7 +5,8 @@ import "errors"
 var (
 	ErrUnauthorized = errors.New("пользователь не авторизован")
 
-	ErrNotFound = errors.New("not found")
+	ErrNotFound     = errors.New("not found")
+	ErrGameNotFound = errors.New("игра не найдена")
 
 	ErrGetGames     = errors.New("ошибка при получении игр")
 	ErrGetGame      = errors.New("ошибка при получении игры по id")
@@ -46,8 +47,8 @@ var (
 	ErrRegister        = errors.New("ошибка при регистрации")
 	ErrLogin           = errors.New("ошибка при логине")
 	ErrMissingEmail    = errors.New("отсутствует email в запросе")
-	ErrMissingPassword = errors.New("отсутствует email в запросе")
-	ErrMissingSteamURL = errors.New("отсутствует email в запросе")
+	ErrMissingPassword = errors.New("отсутствует password в запросе")
+	ErrMissingSteamURL = errors.New("отсутствует steam url в запросе")
 
 	ErrGetUserInfo = errors.New("ошибка при получении информации о пользователе")
 	ErrForbidden   = errors.New("недостаточно прав")
@@ -56,4 +57,5 @@ var (
 	ErrUpdateUser = errors.New("ошибка при обновлении пользователя")
 
 	ErrLoginTwitch = errors.New("ошибка при логине через twitch")
+	ErrUnknown     = errors.New("неизвестная ошибка")
 )
