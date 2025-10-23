@@ -685,7 +685,7 @@ func (c *GameController) getDataFromIGDB(name string, access *TwitchLoginRespons
 			involved_companies.developer,
 			first_release_date,
 			genres.name;
-		where version_parent = null & game_type = (0, 8, 9, 10) & (aggregated_rating != null | (aggregated_rating = null & hypes != null));
+		where version_parent = null & game_type = (0, 8, 9, 10) & (aggregated_rating != null | (aggregated_rating = null & hypes != null & hypes > 10));
 		limit 1;
 	`, name)
 
