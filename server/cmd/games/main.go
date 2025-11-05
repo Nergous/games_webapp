@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
@@ -28,8 +27,6 @@ const (
 
 func main() {
 	cfg := config.MustLoad()
-
-	fmt.Println(cfg)
 
 	log := setupLogger(cfg.Env)
 

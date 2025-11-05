@@ -840,6 +840,7 @@ type UpdateGameRequest struct {
 	CreateGameRequest
 }
 
+
 type UpdateStatusRequest struct {
 	Status string `json:"status"`
 }
