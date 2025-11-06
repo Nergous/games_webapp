@@ -33,6 +33,7 @@ type GameServicer interface {
 	GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
 	GetUserGame(userID, gameID int64) (*models.UserGames, error)
 	GetGamesPaginated(userID int64, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
+	GetFlex(userID int64, fields []string, where []models.WhereQuery, order []models.Sort, limit uint32, offset uint32) ([]models.UserGameResponse, error)
 
 	Create(game *models.Game) (*models.Game, error)
 	Update(game *models.Game) (*models.Game, error)
@@ -236,6 +237,42 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 
 	if err := json.NewEncoder(w).Encode(response); err != nil {
 		c.log.Error(ErrGetUserGames.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		return
+	}
+}
+
+type FlexRequest struct {
+	UserID int64               `json:"user_id"`
+	Fields []string            `json:"fields"`
+	Where  []models.WhereQuery `json:"where"`
+	Order  []models.Sort       `json:"order"`
+	Limit  uint32              `json:"limit"`
+	Offset uint32              `json:"offset"`
+}
+
+func (c *GameController) GetFlex(w http.ResponseWriter, r *http.Request) {
+	const op = "controllers.games.GetFlex"
+
+	var req FlexRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		c.log.Error(ErrInvalidRequest.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrInvalidRequest.Error(), http.StatusBadRequest)
+		return
+	}
+
+	games, err := c.service.GetFlex(req.UserID, req.Fields, req.Where, req.Order, req.Limit, req.Offset)
+	if err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("operation", op), slog.String("error", err.Error()))
+		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+
+	if err := json.NewEncoder(w).Encode(games); err != nil {
+		c.log.Error(ErrGetGames.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -839,7 +876,6 @@ type UpdateGameRequest struct {
 	CreatedAt *time.Time `json:"created_at"`
 	CreateGameRequest
 }
-
 
 type UpdateStatusRequest struct {
 	Status string `json:"status"`

@@ -73,9 +73,10 @@ func SetupRouter(
 			r.Group(func(r chi.Router) {
 				r.Use(authMiddleware.ValidateToken)
 				r.Get("/", gameController.GetAll)
+				r.Get("/user", gameController.GetUserGames)
 				r.Get("/user/info", authController.GetUserInfo)
 				r.Get("/user/stats", gameController.GetGameStats)
-				r.Get("/user", gameController.GetUserGames)
+
 				r.Post("/twitch", gameController.CreateMultiGamesIGDB)
 
 				r.Get("/search", gameController.SearchAllGames)

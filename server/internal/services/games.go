@@ -391,3 +391,83 @@ func (s *GameService) GetDroppedGames(userID int64) (int, error) {
 
 	return int(count), nil
 }
+
+func (s *GameService) GetFlex(
+
+	userID int64,
+	fields []string,
+	where []models.WhereQuery,
+	order []models.Sort,
+	limit uint32,
+	offset uint32,
+) ([]models.UserGameResponse, error) {
+	const op = "services.games.GetFlex"
+
+	db := s.storage.DB.Model(&models.Game{})
+	if userID != 0 {
+		if userID <= 0 {
+			return nil, fmt.Errorf("%s: userID is required", op)
+		}
+
+		db = db.Select("games.*, user_games.priority, user_games.status").
+			Joins("JOIN user_games ON user_games.game_id = games.id and user_games.user_id = ?", userID)
+	}
+
+	if len(fields) > 0 {
+		if userID != 0 {
+			db = db.Select(append(fields, "user_games.priority", "user_games.status"))
+		} else {
+			db = db.Select(fields)
+		}
+	}
+
+	for _, wq := range where {
+		if wq.Field == "" {
+			continue
+		}
+
+		condition := map[string]string{
+			"gt":  ">",
+			"lt":  "<",
+			"gte": ">=",
+			"lte": "<=",
+			"eq":  "=",
+			"neq": "!=",
+		}[strings.ToLower(wq.Condition)]
+
+		if condition == "" {
+			continue
+		}
+
+		db = db.Where(fmt.Sprintf("%s %s ?", wq.Field, condition), wq.Value)
+	}
+
+	for _, s := range order {
+		if s.Field == "" {
+			continue
+		}
+
+		dir := "ASC"
+
+		if strings.ToLower(s.Direction) == "desc" {
+			dir = "DESC"
+		}
+
+		db = db.Order(fmt.Sprintf("%s %s", s.Field, dir))
+	}
+
+	if limit > 0 {
+		db = db.Limit(int(limit))
+	}
+
+	if offset > 0 {
+		db = db.Offset(int(offset))
+	}
+
+	var res []models.UserGameResponse
+	if err := db.Scan(&res).Error; err != nil {
+		return nil, fmt.Errorf("%s: %w", op, err)
+	}
+
+	return res, nil
+}

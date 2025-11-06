@@ -16,8 +16,10 @@ import (
 )
 
 type Client struct {
-	api ssov1.AuthClient
-	log *slog.Logger
+	auth ssov1.AuthClient
+	app  ssov1.AppClient
+	user ssov1.UserClient
+	log  *slog.Logger
 }
 
 func New(
@@ -51,8 +53,8 @@ func New(
 	}
 
 	return &Client{
-		api: ssov1.NewAuthClient(cc),
-		log: log,
+		auth: ssov1.NewAuthClient(cc),
+		log:  log,
 	}, nil
 }
 
@@ -62,8 +64,8 @@ func InterceptorLogger(l *slog.Logger) grpclog.Logger {
 	})
 }
 
-func (c *Client) ValidateToken(ctx context.Context, token string) (int64, bool, error) {
-	resp, err := c.api.ValidateToken(ctx, &ssov1.ValidateTokenRequest{Token: token})
+func (c *Client) ValidateToken(ctx context.Context, token string) (uint32, bool, error) {
+	resp, err := c.auth.ValidateToken(ctx, &ssov1.ValidateTokenRequest{Token: token})
 	if err != nil {
 		c.log.Error("sso.ValidateToken failed", slog.String("error", err.Error()))
 		return 0, false, err
@@ -72,8 +74,8 @@ func (c *Client) ValidateToken(ctx context.Context, token string) (int64, bool, 
 	return resp.GetUserId(), resp.GetValid(), nil
 }
 
-func (c *Client) Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (int64, error) {
-	resp, err := c.api.Register(ctx, &ssov1.RegisterRequest{Email: email, Password: password, SteamUrl: steamURL, PathToPhoto: pathToPhoto})
+func (c *Client) Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (uint32, error) {
+	resp, err := c.auth.Register(ctx, &ssov1.RegisterRequest{Email: email, Password: password, SteamUrl: steamURL, PathToPhoto: pathToPhoto})
 	if err != nil {
 		c.log.Error("sso.Register failed", slog.String("error", err.Error()))
 		return 0, err
@@ -82,8 +84,8 @@ func (c *Client) Register(ctx context.Context, email, password, steamURL, pathTo
 	return resp.GetUserId(), nil
 }
 
-func (c *Client) Login(ctx context.Context, email, password string, appID int32) (accessToken string, refreshToken string, err error) {
-	resp, err := c.api.Login(ctx, &ssov1.LoginRequest{Email: email, Password: password, AppId: appID})
+func (c *Client) Login(ctx context.Context, email, password string, appID uint32) (accessToken string, refreshToken string, err error) {
+	resp, err := c.auth.Login(ctx, &ssov1.LoginRequest{Email: email, Password: password, AppId: appID})
 	if err != nil {
 		c.log.Error("sso.Login failed", slog.String("error", err.Error()))
 		return "", "", err
@@ -93,7 +95,7 @@ func (c *Client) Login(ctx context.Context, email, password string, appID int32)
 }
 
 func (c *Client) Logout(ctx context.Context, refreshToken string) error {
-	_, err := c.api.Logout(ctx, &ssov1.LogoutRequest{Token: refreshToken})
+	_, err := c.auth.Logout(ctx, &ssov1.LogoutRequest{Token: refreshToken})
 	if err != nil {
 		c.log.Error("sso.Logout failed", slog.String("error", err.Error()))
 		return err
@@ -103,7 +105,7 @@ func (c *Client) Logout(ctx context.Context, refreshToken string) error {
 }
 
 func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (accessToken, newRefreshToken string, err error) {
-	resp, err := c.api.Refresh(ctx, &ssov1.RefreshRequest{
+	resp, err := c.auth.Refresh(ctx, &ssov1.RefreshRequest{
 		RefreshToken: refreshToken,
 	})
 	if err != nil {
@@ -114,8 +116,8 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (accessT
 	return resp.GetAccessToken(), resp.GetRefreshToken(), nil
 }
 
-func (c *Client) IsAdmin(ctx context.Context, userID int64) (bool, error) {
-	resp, err := c.api.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: userID})
+func (c *Client) IsAdmin(ctx context.Context, userID uint32) (bool, error) {
+	resp, err := c.app.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: userID})
 	if err != nil {
 		c.log.Error("sso.IsAdmin failed", slog.String("error", err.Error()))
 		return false, err
@@ -124,8 +126,8 @@ func (c *Client) IsAdmin(ctx context.Context, userID int64) (bool, error) {
 	return resp.GetIsAdmin(), nil
 }
 
-func (c *Client) GetUserInfo(ctx context.Context, userID int64) (string, string, string, error) {
-	resp, err := c.api.UserInfo(ctx, &ssov1.UserInfoRequest{UserId: userID})
+func (c *Client) GetUserInfo(ctx context.Context, userID uint32) (string, string, string, error) {
+	resp, err := c.user.UserInfo(ctx, &ssov1.UserInfoRequest{UserId: userID})
 	if err != nil {
 		c.log.Error("sso.UserInfo failed", slog.String("error", err.Error()))
 		return "", "", "", err
@@ -135,7 +137,17 @@ func (c *Client) GetUserInfo(ctx context.Context, userID int64) (string, string,
 }
 
 func (c *Client) GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error) {
-	resp, err := c.api.GetAllUsers(ctx, &ssov1.GetAllUsersRequest{})
+	resp, err := c.user.GetAllUsers(ctx, &ssov1.GetAllUsersRequest{})
+	if err != nil {
+		c.log.Error("sso.GetAllUser failed", slog.String("error", err.Error()))
+		return nil, err
+	}
+
+	return resp, nil
+}
+
+func (c *Client) GetUsersForApp(ctx context.Context, appID uint32) (*ssov1.GetAllUsersForAppResponse, error) {
+	resp, err := c.app.GetAllUsersForApp(ctx, &ssov1.GetAllUsersForAppRequest{AppId: appID})
 	if err != nil {
 		c.log.Error("sso.GetAllUser failed", slog.String("error", err.Error()))
 		return nil, err
@@ -145,7 +157,7 @@ func (c *Client) GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, erro
 }
 
 func (c *Client) UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) (*ssov1.UpdateUserResponse, error) {
-	resp, err := c.api.UpdateUser(ctx, user)
+	resp, err := c.user.UpdateUser(ctx, user)
 	if err != nil {
 		c.log.Error("sso.UpdateUser failed", slog.String("error", err.Error()))
 		return nil, err
@@ -155,7 +167,7 @@ func (c *Client) UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) 
 }
 
 func (c *Client) DeleteUser(ctx context.Context, user *ssov1.DeleteUserRequest) (*ssov1.DeleteUserResponse, error) {
-	resp, err := c.api.DeleteUser(ctx, user)
+	resp, err := c.user.DeleteUser(ctx, user)
 	if err != nil {
 		c.log.Error("sso.DeleteUser failed", slog.String("error", err.Error()))
 		return nil, err

@@ -26,14 +26,15 @@ type AuthController struct {
 }
 
 type GRPCClient interface {
-	Login(ctx context.Context, email, password string, appID int32) (string, string, error)
+	Login(ctx context.Context, email, password string, appID uint32) (string, string, error)
 	Logout(ctx context.Context, token string) error
-	Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (int64, error)
-	GetUserInfo(ctx context.Context, userID int64) (email, steamURL, pathToPhoto string, err error)
+	Register(ctx context.Context, email, password, steamURL, pathToPhoto string) (uint32, error)
+	GetUserInfo(ctx context.Context, userID uint32) (email, steamURL, pathToPhoto string, err error)
 	GetUsers(ctx context.Context) (*ssov1.GetAllUsersResponse, error)
 	UpdateUser(ctx context.Context, user *ssov1.UpdateUserRequest) (*ssov1.UpdateUserResponse, error)
 	RefreshToken(ctx context.Context, refreshToken string) (string, string, error)
 	DeleteUser(ctx context.Context, user *ssov1.DeleteUserRequest) (*ssov1.DeleteUserResponse, error)
+	GetUsersForApp(ctx context.Context, appID uint32) (*ssov1.GetAllUsersForAppResponse, error)
 }
 
 func NewAuthController(log *slog.Logger, client GRPCClient, uploads uploads.IUploads) *AuthController {
@@ -272,7 +273,7 @@ type GetUserInfoResponse struct {
 }
 
 func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(uint32)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -297,7 +298,7 @@ func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 type User struct {
-	Id          int64  `json:"id"`
+	Id          uint32 `json:"id"`
 	Email       string `json:"email"`
 	SteamURL    string `json:"steam_url"`
 	PathToPhoto string `json:"path_to_photo"`
@@ -309,7 +310,7 @@ type GetUsersResponse struct {
 }
 
 func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	_, ok := r.Context().Value(middleware.UserIDKey).(uint32)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -329,14 +330,14 @@ func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
 	var users GetUsersResponse
 	var err error
 
-	resp, err := c.client.GetUsers(r.Context())
+	resp, err := c.client.GetUsersForApp(r.Context(), 1)
 	if err != nil {
 		c.log.Error("sso.GetUsers failed", slog.String("error", err.Error()))
 		http.Error(w, ErrGetUsers.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	for _, user := range resp.User {
+	for _, user := range resp.Users {
 		users.Users = append(users.Users, User{
 			Id:          user.Id,
 			Email:       user.Email,
@@ -391,7 +392,7 @@ func (c *AuthController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	_, ok := r.Context().Value(middleware.UserIDKey).(uint32)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -418,7 +419,7 @@ func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 	id := parts[3]
 
-	idInt, err := strconv.ParseInt(id, 10, 64)
+	idInt, err := strconv.ParseUint(id, 10, 32)
 	if err != nil {
 		c.log.Error(
 			ErrInvalidID.Error(),
@@ -430,7 +431,7 @@ func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	}
 
 	user = &ssov1.DeleteUserRequest{
-		Id: idInt,
+		Id: uint32(idInt),
 	}
 
 	_, err = c.client.DeleteUser(r.Context(), user)
