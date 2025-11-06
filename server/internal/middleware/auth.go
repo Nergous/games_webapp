@@ -2,6 +2,7 @@ package middleware
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"strings"
 
@@ -37,6 +38,9 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
+		fmt.Println("====================WTF====================")
+		fmt.Println(token)
+		fmt.Println("====================WTF====================")
 
 		userID, valid, err := m.ssoClient.ValidateToken(r.Context(), token)
 		if err != nil || !valid {
@@ -44,10 +48,16 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 			return
 		}
 
+		fmt.Println(userID, valid)
+		fmt.Println("====================WTF====================")
+
 		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID, 1)
 		if err != nil {
 			isAdmin = false
 		}
+
+		fmt.Println(isAdmin)
+		fmt.Println("====================WTF====================")
 
 		ctx := context.WithValue(r.Context(), UserIDKey, userID)
 		ctx = context.WithValue(ctx, IsAdminKey, isAdmin)
