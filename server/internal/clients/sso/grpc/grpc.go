@@ -54,6 +54,8 @@ func New(
 
 	return &Client{
 		auth: ssov1.NewAuthClient(cc),
+		app:  ssov1.NewAppClient(cc),
+		user: ssov1.NewUserClient(cc),
 		log:  log,
 	}, nil
 }
