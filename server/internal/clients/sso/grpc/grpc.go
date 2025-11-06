@@ -116,8 +116,8 @@ func (c *Client) RefreshToken(ctx context.Context, refreshToken string) (accessT
 	return resp.GetAccessToken(), resp.GetRefreshToken(), nil
 }
 
-func (c *Client) IsAdmin(ctx context.Context, userID uint32) (bool, error) {
-	resp, err := c.app.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: userID})
+func (c *Client) IsAdmin(ctx context.Context, userID uint32, appID uint32) (bool, error) {
+	resp, err := c.app.IsAdmin(ctx, &ssov1.IsAdminRequest{UserId: userID, AppId: appID})
 	if err != nil {
 		c.log.Error("sso.IsAdmin failed", slog.String("error", err.Error()))
 		return false, err

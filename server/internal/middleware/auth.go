@@ -44,7 +44,7 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 			return
 		}
 
-		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID)
+		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID, 1)
 		if err != nil {
 			http.Error(w, "ошибка распознавания прав", http.StatusInternalServerError)
 			return
