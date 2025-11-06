@@ -5,7 +5,7 @@ import (
 )
 
 type Game struct {
-	ID        int64  `json:"id" gorm:"primary_key"`
+	ID        int    `json:"id" gorm:"primary_key"`
 	Title     string `json:"title"`
 	Preambula string `json:"preambula"`
 	Image     string `json:"image"`
@@ -13,7 +13,7 @@ type Game struct {
 	Publisher string `json:"publisher"`
 	Year      string `json:"year"`
 	Genre     string `json:"genre"`
-	Creator   int64  `json:"creator"`
+	Creator   int    `json:"creator"`
 
 	URL       string     `json:"url"`
 	CreatedAt *time.Time `json:"created_at" gorm:"type:timestamp"`

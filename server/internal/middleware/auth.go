@@ -2,7 +2,6 @@ package middleware
 
 import (
 	"context"
-	"fmt"
 	"net/http"
 	"strings"
 
@@ -24,8 +23,8 @@ const (
 	IsAdminKey = contextKey("isAdmin")
 )
 
-func UserIDFromContext(ctx context.Context) (int64, bool) {
-	id, ok := ctx.Value(UserIDKey).(int64)
+func UserIDFromContext(ctx context.Context) (int, bool) {
+	id, ok := ctx.Value(UserIDKey).(int)
 	return id, ok
 }
 
@@ -38,9 +37,6 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 		}
 
 		token := strings.TrimPrefix(authHeader, "Bearer ")
-		fmt.Println("====================WTF====================")
-		fmt.Println(token)
-		fmt.Println("====================WTF====================")
 
 		userID, valid, err := m.ssoClient.ValidateToken(r.Context(), token)
 		if err != nil || !valid {
@@ -48,18 +44,12 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 			return
 		}
 
-		fmt.Println(userID, valid)
-		fmt.Println("====================WTF====================")
-
 		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID, 1)
 		if err != nil {
 			isAdmin = false
 		}
 
-		fmt.Println(isAdmin)
-		fmt.Println("====================WTF====================")
-
-		ctx := context.WithValue(r.Context(), UserIDKey, userID)
+		ctx := context.WithValue(r.Context(), UserIDKey, int(userID))
 		ctx = context.WithValue(ctx, IsAdminKey, isAdmin)
 		next.ServeHTTP(w, r.WithContext(ctx))
 	})

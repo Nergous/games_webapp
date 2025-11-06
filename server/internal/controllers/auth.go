@@ -273,7 +273,7 @@ type GetUserInfoResponse struct {
 }
 
 func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
-	userID, ok := r.Context().Value(middleware.UserIDKey).(uint32)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -282,7 +282,7 @@ func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	var user GetUserInfoResponse
 	var err error
 
-	user.Email, user.SteamURL, user.Photo, err = c.client.GetUserInfo(r.Context(), userID)
+	user.Email, user.SteamURL, user.Photo, err = c.client.GetUserInfo(r.Context(), uint32(userID))
 	if err != nil {
 		c.log.Error("sso.GetUserInfo failed", slog.String("error", err.Error()))
 		http.Error(w, ErrGetUserInfo.Error(), http.StatusInternalServerError)
@@ -298,7 +298,7 @@ func (c *AuthController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 }
 
 type User struct {
-	Id          uint32 `json:"id"`
+	Id          int    `json:"id"`
 	Email       string `json:"email"`
 	SteamURL    string `json:"steam_url"`
 	PathToPhoto string `json:"path_to_photo"`
@@ -310,7 +310,7 @@ type GetUsersResponse struct {
 }
 
 func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(middleware.UserIDKey).(uint32)
+	_, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -339,7 +339,7 @@ func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 	for _, user := range resp.Users {
 		users.Users = append(users.Users, User{
-			Id:          user.Id,
+			Id:          int(user.Id),
 			Email:       user.Email,
 			SteamURL:    user.SteamUrl,
 			PathToPhoto: user.PathToPhoto,
@@ -356,7 +356,7 @@ func (c *AuthController) GetUsers(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *AuthController) UpdateUser(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	_, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -392,7 +392,7 @@ func (c *AuthController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 }
 
 func (c *AuthController) DeleteUser(w http.ResponseWriter, r *http.Request) {
-	_, ok := r.Context().Value(middleware.UserIDKey).(uint32)
+	_, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok {
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return

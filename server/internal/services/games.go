@@ -24,7 +24,7 @@ func NewGameService(s *mariadb.Storage, log *slog.Logger) *GameService {
 	}
 }
 
-func (s *GameService) GetGamesPaginated(userID int64, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
+func (s *GameService) GetGamesPaginated(userID int, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
 	const op = "services.games.GetAllGames"
 
 	var results []models.UserGameResponse
@@ -69,7 +69,7 @@ func (s *GameService) GetGamesPaginated(userID int64, search, sortBy, sortOrder 
 	return results, int(count), nil
 }
 
-func (s *GameService) GetByID(id int64) (*models.Game, error) {
+func (s *GameService) GetByID(id int) (*models.Game, error) {
 	const op = "services.games.GetByID"
 
 	var g models.Game
@@ -94,7 +94,7 @@ func (s *GameService) SearchAllGames(query string) ([]models.Game, error) {
 	return results, nil
 }
 
-func (s *GameService) GetUserGame(userID, gameID int64) (*models.UserGames, error) {
+func (s *GameService) GetUserGame(userID, gameID int) (*models.UserGames, error) {
 	const op = "services.games.GetUserGame"
 
 	var g models.UserGames
@@ -107,7 +107,7 @@ func (s *GameService) GetUserGame(userID, gameID int64) (*models.UserGames, erro
 	return &g, nil
 }
 
-func (s *GameService) GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
+func (s *GameService) GetUserGames(userID int, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error) {
 	const op = "services.games.GetUserGames"
 
 	var results []models.UserGameResponse
@@ -222,7 +222,7 @@ func (s *GameService) Update(g *models.Game) (*models.Game, error) {
 	return g, nil
 }
 
-func (s *GameService) Delete(id int64) error {
+func (s *GameService) Delete(id int) error {
 	const op = "services.games.Delete"
 
 	tx := s.storage.DB.Begin()
@@ -322,7 +322,7 @@ func (s *GameService) UpdateUserGame(ug *models.UserGames) error {
 	return nil
 }
 
-func (s *GameService) DeleteUserGame(userID, gameID int64) error {
+func (s *GameService) DeleteUserGame(userID, gameID int) error {
 	const op = "services.games.DeleteUserGame"
 
 	if err := s.storage.DB.Where("user_id = ? AND game_id = ?", userID, gameID).Delete(&models.UserGames{}).Error; err != nil {
@@ -332,7 +332,7 @@ func (s *GameService) DeleteUserGame(userID, gameID int64) error {
 	return nil
 }
 
-func (s *GameService) GetFinishedGames(userID int64) (int, error) {
+func (s *GameService) GetFinishedGames(userID int) (int, error) {
 	const op = "services.games.GetFinishedGames"
 
 	var count int64
@@ -347,7 +347,7 @@ func (s *GameService) GetFinishedGames(userID int64) (int, error) {
 	return int(count), nil
 }
 
-func (s *GameService) GetPlayingGames(userID int64) (int, error) {
+func (s *GameService) GetPlayingGames(userID int) (int, error) {
 	const op = "services.games.GetPlayingGames"
 
 	var count int64
@@ -362,7 +362,7 @@ func (s *GameService) GetPlayingGames(userID int64) (int, error) {
 	return int(count), nil
 }
 
-func (s *GameService) GetPlannedGames(userID int64) (int, error) {
+func (s *GameService) GetPlannedGames(userID int) (int, error) {
 	const op = "services.games.GetPlannedGames"
 
 	var count int64
@@ -377,7 +377,7 @@ func (s *GameService) GetPlannedGames(userID int64) (int, error) {
 	return int(count), nil
 }
 
-func (s *GameService) GetDroppedGames(userID int64) (int, error) {
+func (s *GameService) GetDroppedGames(userID int) (int, error) {
 	const op = "services.games.GetDroppedGames"
 
 	var count int64
@@ -393,13 +393,12 @@ func (s *GameService) GetDroppedGames(userID int64) (int, error) {
 }
 
 func (s *GameService) GetFlex(
-
-	userID int64,
+	userID int,
 	fields []string,
 	where []models.WhereQuery,
 	order []models.Sort,
-	limit uint32,
-	offset uint32,
+	limit int,
+	offset int,
 ) ([]models.UserGameResponse, error) {
 	const op = "services.games.GetFlex"
 

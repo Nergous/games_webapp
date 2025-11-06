@@ -28,24 +28,24 @@ import (
 // ======================
 
 type GameServicer interface {
-	GetByID(id int64) (*models.Game, error)
+	GetByID(id int) (*models.Game, error)
 	SearchAllGames(query string) ([]models.Game, error)
-	GetUserGames(userID int64, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
-	GetUserGame(userID, gameID int64) (*models.UserGames, error)
-	GetGamesPaginated(userID int64, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
-	GetFlex(userID int64, fields []string, where []models.WhereQuery, order []models.Sort, limit uint32, offset uint32) ([]models.UserGameResponse, error)
+	GetUserGames(userID int, status *models.GameStatus, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
+	GetUserGame(userID, gameID int) (*models.UserGames, error)
+	GetGamesPaginated(userID int, search, sortBy, sortOrder string, page, pageSize int) ([]models.UserGameResponse, int, error)
+	GetFlex(userID int, fields []string, where []models.WhereQuery, order []models.Sort, limit int, offset int) ([]models.UserGameResponse, error)
 
 	Create(game *models.Game) (*models.Game, error)
 	Update(game *models.Game) (*models.Game, error)
-	Delete(id int64) error
+	Delete(id int) error
 	GetGameByURL(url string) error
 	CreateUserGame(ug *models.UserGames) error
 	UpdateUserGame(ug *models.UserGames) error
-	DeleteUserGame(userID, gameID int64) error
-	GetFinishedGames(userID int64) (int, error)
-	GetPlayingGames(userID int64) (int, error)
-	GetPlannedGames(userID int64) (int, error)
-	GetDroppedGames(userID int64) (int, error)
+	DeleteUserGame(userID, gameID int) error
+	GetFinishedGames(userID int) (int, error)
+	GetPlayingGames(userID int) (int, error)
+	GetPlannedGames(userID int) (int, error)
+	GetDroppedGames(userID int) (int, error)
 }
 
 // ======================
@@ -84,8 +84,12 @@ type PaginationResponse struct {
 
 func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetAll"
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok {
+		fmt.Println("+++++++++++++++++++++++++++++++++++")
+		fmt.Println("+++++++++++++++++++++++++++++++++++")
+		fmt.Println("+++++++++++++++++++++++++++++++++++")
+		fmt.Println("+++++++++++++++++++++++++++++++++++")
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -158,7 +162,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, ErrGetGames.Error(), http.StatusBadRequest)
 		return
 	}
-	res, err := c.service.GetByID(int64(id_s))
+	res, err := c.service.GetByID(int(id_s))
 	if err != nil {
 		c.log.Error(
 			ErrGetGame.Error(),
@@ -180,8 +184,10 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetUserGames"
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok {
+		fmt.Println(r.Context())
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
 		return
@@ -212,7 +218,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 		pageSize = 100
 	}
 
-	games, total, err := c.service.GetUserGames(userID, status, search, sortBy, sortOrder, page, pageSize)
+	games, total, err := c.service.GetUserGames(int(userID), status, search, sortBy, sortOrder, page, pageSize)
 	if err != nil {
 		c.log.Error(ErrGetUserGames.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGames.Error(), http.StatusInternalServerError)
@@ -243,12 +249,12 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 }
 
 type FlexRequest struct {
-	UserID int64               `json:"user_id"`
+	UserID int                 `json:"user_id"`
 	Fields []string            `json:"fields"`
 	Where  []models.WhereQuery `json:"where"`
 	Order  []models.Sort       `json:"order"`
-	Limit  uint32              `json:"limit"`
-	Offset uint32              `json:"offset"`
+	Limit  int                 `json:"limit"`
+	Offset int                 `json:"offset"`
 }
 
 func (c *GameController) GetFlex(w http.ResponseWriter, r *http.Request) {
@@ -324,7 +330,7 @@ type CreateGameRequest struct {
 	Status    models.GameStatus `json:"status"`
 	URL       string            `json:"url"`
 	Priority  int               `json:"priority"`
-	Creator   int64             `json:"creator"`
+	Creator   int               `json:"creator"`
 }
 
 type RequestGame struct {
@@ -348,7 +354,7 @@ type MultiGameResponse struct {
 
 func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.Create"
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
@@ -625,7 +631,7 @@ func (c *GameController) createThroughIGDB(ctx context.Context, name string, acc
 	default:
 	}
 
-	userID, ok := ctx.Value(middleware.UserIDKey).(int64)
+	userID, ok := ctx.Value(middleware.UserIDKey).(int)
 
 	if !ok || userID <= 0 {
 		return nil, ErrUnauthorized
@@ -872,7 +878,7 @@ func (c *GameController) loginTwitch() (*TwitchLoginResponse, error) {
 // ======================
 
 type UpdateGameRequest struct {
-	GameID    int64      `json:"id"`
+	GameID    int        `json:"id"`
 	CreatedAt *time.Time `json:"created_at"`
 	CreateGameRequest
 }
@@ -888,7 +894,7 @@ type UpdatePriorityRequest struct {
 func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.Update"
 
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
@@ -903,7 +909,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existingGame, err := c.service.GetByID(gameID)
+	existingGame, err := c.service.GetByID(int(gameID))
 	if err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
@@ -931,7 +937,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		if err == nil {
 			defer file.Close()
 
-			oldFilename, err := c.service.GetByID(gameID)
+			oldFilename, err := c.service.GetByID(int(gameID))
 			if err != nil {
 				c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 				http.Error(w, ErrUpdateGame.Error(), http.StatusInternalServerError)
@@ -944,8 +950,6 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 				http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 				return
 			}
-
-			// get filename
 
 			filename = h.Filename
 			filename = generateImageFilename(filename, h.Header.Get("Content-Type"))
@@ -995,7 +999,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	timeNow := time.Now()
 
 	game := &models.Game{
-		ID:        gameID,
+		ID:        int(gameID),
 		Title:     getFormValue(r, gameData, "title"),
 		Preambula: getFormValue(r, gameData, "preambula"),
 		Image:     filename,
@@ -1041,7 +1045,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.UpdateStatus"
 
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
@@ -1056,7 +1060,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	existingGame, err := c.service.GetByID(gameID)
+	existingGame, err := c.service.GetByID(int(gameID))
 	fmt.Printf("%v", existingGame)
 	if err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
@@ -1082,7 +1086,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 			Status:   models.GameStatus(request.Status),
 		}
 	} else {
-		existingUserGame, err := c.service.GetUserGame(userID, gameID)
+		existingUserGame, err := c.service.GetUserGame(userID, int(gameID))
 		if err != nil {
 			c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 			http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
@@ -1114,7 +1118,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.UpdatePriority"
 
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
@@ -1129,7 +1133,7 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	existingGame, err := c.service.GetByID(gameID)
+	existingGame, err := c.service.GetByID(int(gameID))
 	if err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
@@ -1143,7 +1147,7 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 		http.Error(w, ErrUpdateGame.Error(), http.StatusBadRequest)
 		return
 	}
-	existingUserGame, err := c.service.GetUserGame(userID, gameID)
+	existingUserGame, err := c.service.GetUserGame(userID, int(gameID))
 	if err != nil {
 		c.log.Error(ErrGetGame.Error(), slog.String("operation", op), slog.String("error", err.Error()))
 		http.Error(w, ErrGetGame.Error(), http.StatusInternalServerError)
@@ -1202,7 +1206,7 @@ func getFormValue(r *http.Request, gameData map[string]interface{}, key string) 
 func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.DeleteUserGame"
 
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
@@ -1229,7 +1233,7 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 	}
 
 	// Получаем игру по ID
-	game, err := c.service.GetByID(idInt)
+	game, err := c.service.GetByID(int(idInt))
 	if err != nil {
 		c.log.Error(
 			ErrGetGame.Error(),
@@ -1249,7 +1253,7 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	err = c.service.DeleteUserGame(userID, idInt)
+	err = c.service.DeleteUserGame(userID, int(idInt))
 	if err != nil {
 		c.log.Error(
 			ErrDeleteUserGame.Error(),
@@ -1266,7 +1270,7 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.Delete"
 
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
@@ -1293,7 +1297,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	}
 
 	// Получаем игру по ID
-	game, err := c.service.GetByID(idInt)
+	game, err := c.service.GetByID(int(idInt))
 	if err != nil {
 		c.log.Error(
 			ErrGetGame.Error(),
@@ -1317,7 +1321,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 		}
 
 		// Удаляем запись игры
-		err = c.service.Delete(idInt)
+		err = c.service.Delete(int(idInt))
 		if err != nil {
 			c.log.Error(
 				ErrDeleteGame.Error(),
@@ -1330,7 +1334,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	}
 
-	err = c.service.DeleteUserGame(userID, idInt)
+	err = c.service.DeleteUserGame(userID, int(idInt))
 	if err != nil {
 		c.log.Error(
 			ErrDeleteUserGame.Error(),
@@ -1355,7 +1359,7 @@ type GameStats struct {
 
 func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.games.GetGameStats"
-	userID, ok := r.Context().Value(middleware.UserIDKey).(int64)
+	userID, ok := r.Context().Value(middleware.UserIDKey).(int)
 	if !ok || userID <= 0 {
 		c.log.Error(ErrUnauthorized.Error(), slog.String("operation", op))
 		http.Error(w, ErrUnauthorized.Error(), http.StatusUnauthorized)
