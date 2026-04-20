@@ -36,7 +36,7 @@ type IUploadsIGDB interface {
 	SaveImage(image []byte, filename string) error
 	DeleteImage(filename string) error
 	ReplaceImage(image []byte, oldFilename, newFilename string) error
-	DownloadAndSaveImage(url string) (string, error)
+	DownloadAndSaveImage(ctx context.Context, url string) (string, error)
 }
 
 func NewIGDBGamesController(
@@ -110,6 +110,10 @@ func (c *IGDBGamesController) CreateMultiGamesIGDB(w http.ResponseWriter, r *htt
 		return
 	}
 
+	// Result/error channels are drained only after every worker has finished
+	// (see wg.Wait + close below), so buffers must accommodate the whole
+	// batch or workers will block and deadlock. Memory overhead is minimal —
+	// the batch is capped at maxGamesPerRequest.
 	var (
 		sem         = make(chan struct{}, maxIGDBWorkers)
 		wg          sync.WaitGroup
@@ -177,9 +181,7 @@ func (c *IGDBGamesController) CreateMultiGamesIGDB(w http.ResponseWriter, r *htt
 		log.Info("games created", slog.Int("count", len(createdGames)))
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(status)
-	json.NewEncoder(w).Encode(MultiGameResponse{
+	controller.WriteJSON(w, log, status, MultiGameResponse{
 		Success: createdGames,
 		Errors:  gameErrors,
 	})
@@ -209,7 +211,7 @@ func (c *IGDBGamesController) createThroughIGDB(ctx context.Context, req Request
 		return nil, err
 	}
 
-	imageFilename, err := c.uploads.DownloadAndSaveImage(info.CoverURL)
+	imageFilename, err := c.uploads.DownloadAndSaveImage(ctx, info.CoverURL)
 	if err != nil {
 		return nil, g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDownloadImage,
 			map[string]any{"url": info.CoverURL}, err)

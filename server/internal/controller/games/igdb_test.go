@@ -27,7 +27,7 @@ type mockUploadsIGDB struct {
 	saveImage            func([]byte, string) error
 	deleteImage          func(string) error
 	replaceImage         func([]byte, string, string) error
-	downloadAndSaveImage func(string) (string, error)
+	downloadAndSaveImage func(context.Context, string) (string, error)
 }
 
 func (m *mockUploadsIGDB) SaveImage(img []byte, fn string) error {
@@ -48,11 +48,11 @@ func (m *mockUploadsIGDB) ReplaceImage(img []byte, old, newFn string) error {
 	}
 	return m.replaceImage(img, old, newFn)
 }
-func (m *mockUploadsIGDB) DownloadAndSaveImage(url string) (string, error) {
+func (m *mockUploadsIGDB) DownloadAndSaveImage(ctx context.Context, url string) (string, error) {
 	if m.downloadAndSaveImage == nil {
 		return "cover.jpg", nil
 	}
-	return m.downloadAndSaveImage(url)
+	return m.downloadAndSaveImage(ctx, url)
 }
 
 // ============================================================================
@@ -264,7 +264,7 @@ func TestCreateMultiGamesIGDB_AllSuccess(t *testing.T) {
 		},
 	}
 	up := &mockUploadsIGDB{
-		downloadAndSaveImage: func(_ string) (string, error) { return "cover.jpg", nil },
+		downloadAndSaveImage: func(_ context.Context, _ string) (string, error) { return "cover.jpg", nil },
 	}
 	c := newIGDBController(t, twitch, igdb, svc, up)
 
@@ -330,7 +330,7 @@ func TestCreateMultiGamesIGDB_PartialSuccess(t *testing.T) {
 		},
 	}
 	up := &mockUploadsIGDB{
-		downloadAndSaveImage: func(_ string) (string, error) { return "cover.jpg", nil },
+		downloadAndSaveImage: func(_ context.Context, _ string) (string, error) { return "cover.jpg", nil },
 	}
 	c := newIGDBController(t, twitch, igdb, svc, up)
 
@@ -369,7 +369,7 @@ func TestCreateMultiGamesIGDB_ByURL_SlugExtracted(t *testing.T) {
 		},
 	}
 	up := &mockUploadsIGDB{
-		downloadAndSaveImage: func(_ string) (string, error) { return "cover.jpg", nil },
+		downloadAndSaveImage: func(_ context.Context, _ string) (string, error) { return "cover.jpg", nil },
 	}
 	c := newIGDBController(t, twitch, igdb, svc, up)
 
@@ -394,7 +394,7 @@ func TestCreateMultiGamesIGDB_ServiceError_DeletesImage(t *testing.T) {
 		},
 	}
 	up := &mockUploadsIGDB{
-		downloadAndSaveImage: func(_ string) (string, error) { return "cover.jpg", nil },
+		downloadAndSaveImage: func(_ context.Context, _ string) (string, error) { return "cover.jpg", nil },
 		deleteImage: func(_ string) error {
 			deleteCalled = true
 			return nil

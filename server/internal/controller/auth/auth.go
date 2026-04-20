@@ -106,8 +106,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(userID)
+	controller.WriteJSON(w, log, http.StatusCreated, userID)
 }
 
 func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
@@ -147,8 +146,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 		Partitioned: true,
 	})
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(LoginResponse{AccessToken: accessToken})
+	controller.WriteJSON(w, log, http.StatusOK, LoginResponse{AccessToken: accessToken})
 }
 
 func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
@@ -177,8 +175,7 @@ func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 		Partitioned: true,
 	})
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{"message": "logged out successfully"})
+	controller.WriteJSON(w, log, http.StatusOK, map[string]string{"message": "logged out successfully"})
 }
 
 // ============================================================================

@@ -71,9 +71,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(res)
+	controller.WriteJSON(w, log, http.StatusOK, res)
 }
 
 func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
@@ -112,9 +110,7 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 		}
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(controller.PaginationResponse{
+	controller.WriteJSON(w, log, http.StatusOK, controller.PaginationResponse{
 		Total:   total,
 		Pages:   totalPages,
 		Current: params.Page,
@@ -135,9 +131,7 @@ func (c *GameController) SearchAllGames(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(games)
+	controller.WriteJSON(w, log, http.StatusOK, games)
 }
 
 func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
@@ -164,9 +158,7 @@ func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(result)
+	controller.WriteJSON(w, log, http.StatusOK, result)
 }
 
 func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
@@ -209,9 +201,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 		totalPages++
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(controller.PaginationResponse{
+	controller.WriteJSON(w, log, http.StatusOK, controller.PaginationResponse{
 		Total:   total,
 		Pages:   totalPages,
 		Current: params.Page,
@@ -236,9 +226,7 @@ func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(counts)
+	controller.WriteJSON(w, log, http.StatusOK, counts)
 }
 
 func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
@@ -313,9 +301,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusCreated)
-	json.NewEncoder(w).Encode(res)
+	controller.WriteJSON(w, log, http.StatusCreated, res)
 }
 
 func (c *GameController) AddUserGame(w http.ResponseWriter, r *http.Request) {
@@ -422,9 +408,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(res)
+	controller.WriteJSON(w, log, http.StatusOK, res)
 }
 
 // parseUpdateRequest dispatches to the appropriate parser by Content-Type.

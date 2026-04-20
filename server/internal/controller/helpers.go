@@ -125,6 +125,18 @@ func GetIsAdmin(ctx context.Context) bool {
 	return isAdmin
 }
 
+// WriteJSON serializes payload as JSON, sets Content-Type and the given status
+// code, and logs any encode failure. Encode failures after WriteHeader cannot
+// be recovered for the client (headers are already flushed), so the response
+// body may be truncated — logging is the only useful signal.
+func WriteJSON(w http.ResponseWriter, log *slog.Logger, status int, payload any) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(status)
+	if err := json.NewEncoder(w).Encode(payload); err != nil {
+		log.Error("encode response", slog.Any("error", err))
+	}
+}
+
 // WriteError logs the error with its ServiceError details (when available)
 // and writes the public message with the mapped HTTP status to the response.
 // Call sites:

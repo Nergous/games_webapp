@@ -87,9 +87,7 @@ func (c *UserInfoController) GetUserInfo(w http.ResponseWriter, r *http.Request)
 		return
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(user)
+	controller.WriteJSON(w, log, http.StatusOK, user)
 }
 
 func (c *UserInfoController) GetUsers(w http.ResponseWriter, r *http.Request) {
@@ -121,9 +119,7 @@ func (c *UserInfoController) GetUsers(w http.ResponseWriter, r *http.Request) {
 		})
 	}
 
-	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(users)
+	controller.WriteJSON(w, log, http.StatusOK, users)
 }
 
 func (c *UserInfoController) UpdateUser(w http.ResponseWriter, r *http.Request) {

@@ -112,5 +112,7 @@ func SetupRouter(
 func healthHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
+	// Health check body is fire-and-forget; an encode failure after headers
+	// are flushed cannot be signaled to the client.
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

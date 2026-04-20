@@ -2,6 +2,7 @@
 package uploads
 
 import (
+	"context"
 	"crypto/sha256"
 	"fmt"
 	g_errors "games_webapp/internal/errors"
@@ -355,7 +356,7 @@ func (u *Uploads) ReplaceImage(image []byte, oldFilename, newFilename string) er
 // Output parameters:
 //   - string: generated filename of the saved image on success
 //   - error: nil on success, or an error if URL is empty (CodeInvalidInput), HTTP request fails (timeout, network issues), response status is not 200 OK, Content-Type is not an image type (CodeInvalidInput), reading response body fails, or saving the image fails
-func (u *Uploads) DownloadAndSaveImage(url string) (string, error) {
+func (u *Uploads) DownloadAndSaveImage(ctx context.Context, url string) (string, error) {
 	const op = "storage.Uploads.DownloadAndSaveImage"
 	if url == "" {
 		return "", g_errors.NewWithInfo(
@@ -369,7 +370,17 @@ func (u *Uploads) DownloadAndSaveImage(url string) (string, error) {
 	}
 
 	client := &http.Client{Timeout: 5 * time.Second}
-	resp, err := client.Get(url)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return "", g_errors.WrapWithInfo(
+			op,
+			g_errors.CodeInternal,
+			g_errors.CannotDownloadImage,
+			map[string]any{"url": url},
+			err,
+		)
+	}
+	resp, err := client.Do(req)
 	if err != nil {
 		return "", g_errors.WrapWithInfo(
 			op,

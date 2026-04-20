@@ -5,11 +5,11 @@ import (
 	"context"
 	"errors"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
 	"syscall"
-	"time"
 
 	"games_webapp/internal/config"
 	"games_webapp/internal/middleware"
@@ -72,12 +72,19 @@ func main() {
 
 	log.Info("routes init")
 
+	// appCtx is cancelled on shutdown. It is threaded into every incoming
+	// request via http.Server.BaseContext so long-running handlers (e.g. the
+	// IGDB batch import) abort promptly when the process is stopping.
+	appCtx, cancelApp := context.WithCancel(context.Background())
+	defer cancelApp()
+
 	server := &http.Server{
 		Addr:         cfg.Address,
 		Handler:      r,
 		ReadTimeout:  cfg.Timeout,
 		WriteTimeout: cfg.Timeout,
 		IdleTimeout:  cfg.IdleTimeout,
+		BaseContext:  func(net.Listener) context.Context { return appCtx },
 	}
 
 	serverErrors := make(chan error, 1)
@@ -100,11 +107,15 @@ func main() {
 	case sig := <-shutdown:
 
 		log.Info("shutting down", slog.String("signal", sig.String()))
-		ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+
+		// Must outlast the longest handler (IGDB batch is 30s) plus a small
+		// grace window so in-flight work finishes rather than being truncated.
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.ShutdownTimeout)
 		defer cancel()
 
 		if err := server.Shutdown(ctx); err != nil {
 			log.Error("graceful shutdown error", slog.String("error", err.Error()))
+			cancelApp() // abort in-flight request contexts before forcing close
 			if err := server.Close(); err != nil {
 				log.Error("force shutdown error", slog.String("error", err.Error()))
 			}

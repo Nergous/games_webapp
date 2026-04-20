@@ -100,9 +100,9 @@ func (s *Storage) Migrate() error {
 			status 		VARCHAR(20) NOT NULL DEFAULT 'planned',
 			INDEX 		idx_user_games_user_id (user_id),
 			INDEX 		idx_user_games_game_id (game_id),
-			UNIQUE KEY 	idx_user_games_unique (user_id, game_id)
-			CONSTRAINT 	fk_user_games_game_id 
-				FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE,
+			UNIQUE KEY 	idx_user_games_unique (user_id, game_id),
+			CONSTRAINT 	fk_user_games_game_id
+				FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
 
 	if _, err := s.db.Exec(gameTable); err != nil {

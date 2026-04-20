@@ -115,6 +115,12 @@ type HTTPServer struct {
 	// connection open. Defaults to 60 seconds.
 	IdleTimeout time.Duration `yaml:"idle_timeout" env-default:"60s"`
 
+	// ShutdownTimeout bounds graceful shutdown. It must exceed the longest
+	// in-flight handler duration (the IGDB batch import uses 30s) plus a
+	// small grace window so active work completes rather than being aborted.
+	// Defaults to 35 seconds.
+	ShutdownTimeout time.Duration `yaml:"shutdown_timeout" env-default:"35s"`
+
 	// Cors is the list of allowed CORS origins for cross-origin requests.
 	// Defaults to ["http://localhost:3000"].
 	Cors []string `yaml:"cors" env-default:"[http://localhost:3000]"`

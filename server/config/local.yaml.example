@@ -18,6 +18,7 @@ http_server:
     address: localhost:8082
     timeout: 4s
     idle_timeout: 60s
+    shutdown_timeout: 35s
     cors: ["http://localhost:3000"]
 
 clients:

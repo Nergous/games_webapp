@@ -3,7 +3,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -83,6 +82,5 @@ func (c *TokensController) Refresh(w http.ResponseWriter, r *http.Request) {
 		Partitioned: true,
 	})
 
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(RefreshResponse{AccessToken: accessToken})
+	controller.WriteJSON(w, log, http.StatusOK, RefreshResponse{AccessToken: accessToken})
 }
