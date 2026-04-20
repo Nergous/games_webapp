@@ -245,6 +245,28 @@ func ExtractSlug(igdbURL string) (string, error) {
 	return slug, nil
 }
 
+// escapeApicalypse neutralises characters that could break out of the
+// quoted string literal in an Apicalypse query. IGDB's query language has
+// no parameter binding, so we sanitise before interpolation: backslashes
+// and double quotes are escaped; control characters are stripped (newlines
+// and semicolons would otherwise let callers inject extra statements).
+func escapeApicalypse(s string) string {
+	var b strings.Builder
+	b.Grow(len(s))
+	for _, r := range s {
+		switch {
+		case r == '\\' || r == '"':
+			b.WriteByte('\\')
+			b.WriteRune(r)
+		case r < 0x20: // drop control chars incl. \n, \r, \t
+			continue
+		default:
+			b.WriteRune(r)
+		}
+	}
+	return b.String()
+}
+
 func igdbQueryBody(name, slug string) string {
 	if slug != "" {
 		return fmt.Sprintf(`
@@ -260,7 +282,7 @@ func igdbQueryBody(name, slug string) string {
 				genres.name;
 			where slug = "%s";
 			limit 1;
-		`, slug)
+		`, escapeApicalypse(slug))
 	}
 	return fmt.Sprintf(`
 		search "%s";
@@ -276,5 +298,5 @@ func igdbQueryBody(name, slug string) string {
 			genres.name;
 		where version_parent = null & game_type = (0, 8, 9, 10) & (aggregated_rating != null | (aggregated_rating = null & hypes != null & hypes > 10));
 		limit 1;
-	`, name)
+	`, escapeApicalypse(name))
 }

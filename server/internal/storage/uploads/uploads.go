@@ -277,43 +277,8 @@ func (u *Uploads) ReplaceImage(image []byte, oldFilename, newFilename string) er
 		)
 	}
 
-	tempPath := newPath + ".tmp"
-	file, err := os.Create(tempPath)
-
-	if err != nil {
-		return g_errors.WrapWithInfo(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotCreateFile,
-			map[string]any{
-				"tempfilename": tempPath,
-			},
-			err,
-		)
-	}
-	defer file.Close()
-
-	if _, err := file.Write(image); err != nil {
-		os.Remove(tempPath)
-
-		return g_errors.Wrap(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotWriteFile,
-			err,
-		)
-	}
-
-	file.Close()
-
-	if err := os.Rename(tempPath, newPath); err != nil {
-		os.Remove(tempPath)
-		return g_errors.Wrap(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotRenameFile,
-			err,
-		)
+	if err := atomicWriteFile(newPath, image); err != nil {
+		return g_errors.Wrap(op, g_errors.CodeInternal, "", err)
 	}
 
 	if oldFilename != newFilename {
@@ -477,6 +442,32 @@ func (u *Uploads) GenerateImageFilename(url, contentType string) string {
 
 	hash := sha256.Sum256([]byte(unique_string))
 	return fmt.Sprintf("%x%s", hash[:8], ext)
+}
+
+// atomicWriteFile writes data to a sibling ".tmp" file, closes it, then
+// renames into place — either the target is fully replaced or it's unchanged.
+// Any partially written .tmp is removed on error so the filesystem never
+// contains a half-formed artifact.
+func atomicWriteFile(path string, data []byte) error {
+	tempPath := path + ".tmp"
+	f, err := os.Create(tempPath)
+	if err != nil {
+		return err
+	}
+	if _, err := f.Write(data); err != nil {
+		f.Close()
+		os.Remove(tempPath)
+		return err
+	}
+	if err := f.Close(); err != nil {
+		os.Remove(tempPath)
+		return err
+	}
+	if err := os.Rename(tempPath, path); err != nil {
+		os.Remove(tempPath)
+		return err
+	}
+	return nil
 }
 
 // ensureFolderExists verifies that the uploads directory exists and creates it

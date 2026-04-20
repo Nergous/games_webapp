@@ -951,6 +951,55 @@ func TestUpdate_JSON_InvalidBody(t *testing.T) {
 	assertStatus(t, w.Code, http.StatusBadRequest)
 }
 
+func TestUpdate_JSON_EmptyBodyRejected(t *testing.T) {
+	svc := &mockGameService{
+		getByID: func(_ context.Context, _ int) (*models.Game, error) {
+			return stubGame(), nil
+		},
+	}
+	c := newController(svc, &mockUploads{})
+
+	r := httptest.NewRequest(http.MethodPut, "/games/1", strings.NewReader("{}"))
+	r.Header.Set("Content-Type", "application/json")
+	r = withAuthAndParam(r, 10, false, "id", "1")
+	w := httptest.NewRecorder()
+	c.Update(w, r)
+
+	assertStatus(t, w.Code, http.StatusBadRequest)
+}
+
+// Partial update: only "priority" provided; title/url must survive from existing.
+func TestUpdate_JSON_PartialPreservesExisting(t *testing.T) {
+	var gotGame *models.Game
+	var gotUserGame *models.UserGame
+	svc := &mockGameService{
+		getByID: func(_ context.Context, _ int) (*models.Game, error) {
+			return stubGame(), nil // Title="Half-Life 2", URL="http://hl2.com"
+		},
+		update: func(_ context.Context, game *models.Game, ug *models.UserGame) (*models.Game, error) {
+			gotGame = game
+			gotUserGame = ug
+			return game, nil
+		},
+	}
+	c := newController(svc, &mockUploads{})
+
+	body, _ := json.Marshal(map[string]any{"priority": 7})
+	r := httptest.NewRequest(http.MethodPut, "/games/1", bytes.NewReader(body))
+	r.Header.Set("Content-Type", "application/json")
+	r = withAuthAndParam(r, 10, false, "id", "1")
+	w := httptest.NewRecorder()
+	c.Update(w, r)
+
+	assertStatus(t, w.Code, http.StatusOK)
+	if gotGame.Title == "" || gotGame.URL == "" {
+		t.Errorf("partial update wiped required fields: %+v", gotGame)
+	}
+	if gotUserGame.Priority != 7 {
+		t.Errorf("priority: got %d, want 7", gotUserGame.Priority)
+	}
+}
+
 func TestUpdate_JSON_EmptyImageUsesExisting(t *testing.T) {
 	var gotGame *models.Game
 	svc := &mockGameService{

@@ -483,33 +483,62 @@ func (c *GameController) parseMultipartUpdate(r *http.Request, existing *models.
 	return fields, nil
 }
 
-// parseJSONUpdate parses an application/json Update request. A missing or
-// empty "image" field falls back to the existing image filename.
+// parseJSONUpdate parses an application/json Update request and merges it
+// with the current game state. Any field the caller omits keeps its existing
+// value, enabling true partial updates (e.g. bumping only priority without
+// wiping title).
+//
+// Requires at least one known field in the body — an empty payload is a
+// no-op and almost always a client bug.
 func parseJSONUpdate(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
 	var body map[string]any
 	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
 		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 	}
 
-	fields := gameUpdateFields{}
-	fields.Title, _ = body["title"].(string)
-	fields.Preambula, _ = body["preambula"].(string)
-	fields.Developer, _ = body["developer"].(string)
-	fields.Publisher, _ = body["publisher"].(string)
-	fields.Year, _ = body["year"].(string)
-	fields.Genre, _ = body["genre"].(string)
-	fields.URL, _ = body["url"].(string)
-	fields.Image, _ = body["image"].(string)
-	if fields.Image == "" {
-		fields.Image = existing.Image
+	fields := gameUpdateFields{
+		Title:     existing.Title,
+		Preambula: existing.Preambula,
+		Developer: existing.Developer,
+		Publisher: existing.Publisher,
+		Year:      existing.Year,
+		Genre:     existing.Genre,
+		URL:       existing.URL,
+		Image:     existing.Image,
 	}
+
+	touched := overlayString(body, "title", &fields.Title)
+	touched = overlayString(body, "preambula", &fields.Preambula) || touched
+	touched = overlayString(body, "developer", &fields.Developer) || touched
+	touched = overlayString(body, "publisher", &fields.Publisher) || touched
+	touched = overlayString(body, "year", &fields.Year) || touched
+	touched = overlayString(body, "genre", &fields.Genre) || touched
+	touched = overlayString(body, "url", &fields.URL) || touched
+	touched = overlayString(body, "image", &fields.Image) || touched
 	if s, ok := body["status"].(string); ok {
 		fields.Status = models.GameStatus(s)
+		touched = true
 	}
 	if p, ok := body["priority"].(float64); ok {
 		fields.Priority = int(p)
+		touched = true
+	}
+
+	if !touched {
+		return gameUpdateFields{}, g_errors.New(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm)
 	}
 	return fields, nil
+}
+
+// overlayString copies body[key] into *dst when present as a string, and
+// reports whether the field was touched.
+func overlayString(body map[string]any, key string, dst *string) bool {
+	v, ok := body[key].(string)
+	if !ok {
+		return false
+	}
+	*dst = v
+	return true
 }
 
 // parseGameID extracts and validates the "id" chi URL parameter.

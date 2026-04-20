@@ -98,7 +98,8 @@ func (r *GamesRepository) GetAllPaginated(ctx context.Context, userID int, param
 	}
 	defer rows.Close()
 
-	var results []models.UserGameResponse
+	// Cap at PageSize — the query's LIMIT guarantees we never exceed it.
+	results := make([]models.UserGameResponse, 0, params.PageSize)
 	for rows.Next() {
 		var g models.UserGameResponse
 		if err := rows.Scan(
@@ -200,7 +201,8 @@ func (r *GamesRepository) GetUserGames(ctx context.Context, userID int, params r
 	}
 	defer rows.Close()
 
-	var results []models.UserGameResponse
+	// Cap at PageSize — the query's LIMIT guarantees we never exceed it.
+	results := make([]models.UserGameResponse, 0, params.PageSize)
 	for rows.Next() {
 		var g models.UserGameResponse
 		if err := rows.Scan(
@@ -236,7 +238,7 @@ func (r *GamesRepository) SearchAllGames(ctx context.Context, query string) ([]m
 	}
 	defer rows.Close()
 
-	var results []models.Game
+	results := make([]models.Game, 0, 20) // LIMIT 20 above
 	for rows.Next() {
 		var g models.Game
 		if err := rows.Scan(

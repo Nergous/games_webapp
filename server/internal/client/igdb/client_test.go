@@ -218,6 +218,43 @@ func TestGetGame_NotFound(t *testing.T) {
 	}
 }
 
+func TestGetGame_EscapesQuotesInName(t *testing.T) {
+	twitch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Write(twitchTokenBody())
+	}))
+	t.Cleanup(twitch.Close)
+
+	var gotBody string
+	game := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		b, _ := readAllString(r.Body)
+		gotBody = b
+		w.Write(igdbGameBody())
+	}))
+	t.Cleanup(game.Close)
+
+	c := igdb.New(game.URL, twitch.URL, "cid", "csec")
+	// name contains a quote, a newline, and a semicolon — all must be
+	// neutralised so the user value stays inside the search literal and
+	// doesn't spawn a second Apicalypse statement.
+	malicious := "HL\"; limit 999;--\n"
+	if _, err := c.GetGame(context.Background(), malicious, ""); err != nil {
+		t.Fatalf("GetGame: %v", err)
+	}
+	// The user's input lives inside a single search "..." literal — only one
+	// opening `search "` may appear in the final body.
+	if n := strings.Count(gotBody, `search "`); n != 1 {
+		t.Errorf("want exactly 1 search clause, got %d in %q", n, gotBody)
+	}
+	// The escape sequence for the user's quote must be present.
+	if !strings.Contains(gotBody, `HL\"`) {
+		t.Errorf("double-quote not escaped, got: %q", gotBody)
+	}
+	// The stripped newline must not appear inside the literal.
+	if strings.Contains(gotBody, "HL\\\";") && strings.Contains(gotBody, "--\n") {
+		t.Errorf("newline not stripped from user input, got: %q", gotBody)
+	}
+}
+
 func TestGetGame_BadJSON(t *testing.T) {
 	twitch := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
