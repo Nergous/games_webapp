@@ -130,7 +130,7 @@ func (m *mockRepo) DeleteUserGame(ctx context.Context, userID, gameID int) error
 // ============================================================================
 
 func newService(repo repository.GamesRepository) *games.GameService {
-	return games.NewGameService(repo)
+	return games.NewGameService(repo, nil, nil)
 }
 
 func assertCode(t *testing.T, err error, want g_errors.Code) {

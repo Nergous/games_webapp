@@ -11,6 +11,7 @@ import (
 	"games_webapp/internal/middleware"
 	"games_webapp/internal/models"
 	"games_webapp/internal/repository"
+	"games_webapp/internal/service"
 	"io"
 	"log/slog"
 	"mime/multipart"
@@ -38,8 +39,9 @@ type mockGameService struct {
 	update         func(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
 	updateStatus   func(ctx context.Context, userID, gameID int, status models.GameStatus) error
 	updatePriority func(ctx context.Context, userID, gameID int, priority int) error
-	delete         func(ctx context.Context, gameID int) error
-	deleteUserGame func(ctx context.Context, userID, gameID int) error
+	delete              func(ctx context.Context, gameID int) error
+	deleteUserGame      func(ctx context.Context, userID, gameID int) error
+	batchImportFromIGDB func(ctx context.Context, userID int, requests []service.ImportGameRequest) (*service.ImportResult, error)
 }
 
 func (m *mockGameService) GetByID(ctx context.Context, id int) (*models.Game, error) {
@@ -131,6 +133,13 @@ func (m *mockGameService) DeleteUserGame(ctx context.Context, userID, gameID int
 		panic("unexpected call to DeleteUserGame")
 	}
 	return m.deleteUserGame(ctx, userID, gameID)
+}
+
+func (m *mockGameService) BatchImportFromIGDB(ctx context.Context, userID int, requests []service.ImportGameRequest) (*service.ImportResult, error) {
+	if m.batchImportFromIGDB == nil {
+		panic("unexpected call to BatchImportFromIGDB")
+	}
+	return m.batchImportFromIGDB(ctx, userID, requests)
 }
 
 type mockUploads struct {

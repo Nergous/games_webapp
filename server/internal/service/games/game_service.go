@@ -13,12 +13,19 @@ import (
 )
 
 type GameService struct {
-	repo repository.GamesRepository
+	repo    repository.GamesRepository
+	igdb    IGDBFetcher     // optional; required only for BatchImportFromIGDB
+	uploads ImageDownloader // optional; required only for BatchImportFromIGDB
 }
 
-func NewGameService(r repository.GamesRepository) *GameService {
+// NewGameService wires a GameService. igdb and uploads may be nil if the
+// consumer never calls BatchImportFromIGDB (e.g. in unit tests that only
+// exercise CRUD).
+func NewGameService(r repository.GamesRepository, igdb IGDBFetcher, uploads ImageDownloader) *GameService {
 	return &GameService{
-		repo: r,
+		repo:    r,
+		igdb:    igdb,
+		uploads: uploads,
 	}
 }
 

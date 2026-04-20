@@ -47,10 +47,10 @@ func SetupRouter(
 	}))
 
 	gameRepo := mariadb.NewGamesRepository(store.GetDB())
-	gameService := games.NewGameService(gameRepo)
-	gameController := gamescontroller.NewGameController(gameService, log, uploadsStorage)
 	igdbCl := igdbclient.New(cfg.TwitchAPI, cfg.TwitchAuthAPI, cfg.TwitchClientId, cfg.TwitchClientSecret)
-	igdbGameController := gamescontroller.NewIGDBGamesController(gameService, log, uploadsStorage, igdbCl)
+	gameService := games.NewGameService(gameRepo, igdbCl, uploadsStorage)
+	gameController := gamescontroller.NewGameController(gameService, log, uploadsStorage)
+	igdbGameController := gamescontroller.NewIGDBGamesController(gameService, log)
 
 	authController := authcontroller.NewAuthController(log, ssoClient, uploadsStorage, cfg.AppID)
 	tokensController := authcontroller.NewTokensController(log, ssoClient)

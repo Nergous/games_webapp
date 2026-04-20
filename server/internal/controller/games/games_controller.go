@@ -19,6 +19,8 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
+const maxUploadSize = 10 << 20 // 10 MiB
+
 type GameController struct {
 	service service.GameService
 	log     *slog.Logger
@@ -39,19 +41,6 @@ func NewGameController(s service.GameService, log *slog.Logger, u IUploadsGames)
 		uploads: u,
 	}
 }
-
-// ============================================================================
-// SETTERS
-// ============================================================================
-
-// SetService replaces the GameService used by the controller.
-func (c *GameController) SetService(s service.GameService) { c.service = s }
-
-// SetLogger replaces the structured logger used by the controller.
-func (c *GameController) SetLogger(log *slog.Logger) { c.log = log }
-
-// SetUploads replaces the file upload handler used by the controller.
-func (c *GameController) SetUploads(u IUploadsGames) { c.uploads = u }
 
 func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.PublicGamesController.GetByID"
