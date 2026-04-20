@@ -12,8 +12,33 @@ import (
 	g_errors "games_webapp/internal/errors"
 )
 
+// gamesRepo is the subset of the persistence layer this service consumes.
+// Declared here (consumer side) so the repository implementation can add
+// methods without forcing the service to notice.
+type gamesRepo interface {
+	GetByID(ctx context.Context, id int) (*models.Game, error)
+	GetAllPaginated(ctx context.Context, userID int, params repository.GetAllParams) ([]models.UserGameResponse, int, error)
+
+	GetUserGame(ctx context.Context, userID, gameID int) (*models.UserGame, error)
+	GetUserGames(ctx context.Context, userID int, params repository.GetUserGamesParams) ([]models.UserGameResponse, int, error)
+
+	GetUserGameStatusCounts(ctx context.Context, userID int) (repository.StatusCounts, error)
+
+	SearchAllGames(ctx context.Context, query string) ([]models.Game, error)
+
+	CreateWithUserGame(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
+	AddUserGame(ctx context.Context, userGame *models.UserGame) error
+
+	UpdateWithUserGame(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
+	UpdateUserGameStatus(ctx context.Context, userID, gameID int, status models.GameStatus) error
+	UpdateUserGamePriority(ctx context.Context, userID, gameID int, priority int) error
+
+	Delete(ctx context.Context, id int) error
+	DeleteUserGame(ctx context.Context, userID, gameID int) error
+}
+
 type GameService struct {
-	repo    repository.GamesRepository
+	repo    gamesRepo
 	igdb    IGDBFetcher     // optional; required only for BatchImportFromIGDB
 	uploads ImageDownloader // optional; required only for BatchImportFromIGDB
 }
@@ -21,7 +46,7 @@ type GameService struct {
 // NewGameService wires a GameService. igdb and uploads may be nil if the
 // consumer never calls BatchImportFromIGDB (e.g. in unit tests that only
 // exercise CRUD).
-func NewGameService(r repository.GamesRepository, igdb IGDBFetcher, uploads ImageDownloader) *GameService {
+func NewGameService(r gamesRepo, igdb IGDBFetcher, uploads ImageDownloader) *GameService {
 	return &GameService{
 		repo:    r,
 		igdb:    igdb,

@@ -65,7 +65,7 @@ func (m *mockUploader) DeleteImage(filename string) error {
 // newImportService returns a service wired with the given IGDB fetcher,
 // uploader, and a CreateWithUserGame stub on the repo (repo must always be
 // involved because BatchImportFromIGDB calls through to Create).
-func newImportService(repo repository.GamesRepository, igdb games.IGDBFetcher, up games.ImageDownloader) *games.GameService {
+func newImportService(repo *mockRepo, igdb games.IGDBFetcher, up games.ImageDownloader) *games.GameService {
 	return games.NewGameService(repo, igdb, up)
 }
 

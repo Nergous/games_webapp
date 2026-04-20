@@ -2,6 +2,7 @@
 package games
 
 import (
+	"context"
 	"encoding/json"
 	"io"
 	"log/slog"
@@ -14,19 +15,37 @@ import (
 	g_errors "games_webapp/internal/errors"
 	"games_webapp/internal/models"
 	"games_webapp/internal/repository"
-	"games_webapp/internal/service"
 
 	"github.com/go-chi/chi/v5"
 )
 
 const maxUploadSize = 10 << 20 // 10 MiB
 
-type GameController struct {
-	service service.GameService
-	log     *slog.Logger
-	uploads IUploadsGames
+// gameService is the subset of the application's game service that the CRUD
+// controller depends on. Declared in the consumer package (Go idiom: accept
+// interfaces, return structs) so the service can evolve without touching the
+// HTTP layer.
+type gameService interface {
+	GetByID(ctx context.Context, id int) (*models.Game, error)
+	GetAll(ctx context.Context, userID int, params repository.GetAllParams) ([]models.UserGameResponse, int, error)
+	SearchAllGames(ctx context.Context, query string) ([]models.Game, error)
+
+	GetUserGame(ctx context.Context, userID, gameID int) (*models.UserGame, error)
+	GetUserGames(ctx context.Context, userID int, params repository.GetUserGamesParams) ([]models.UserGameResponse, int, error)
+	GetGameStats(ctx context.Context, userID int) (repository.StatusCounts, error)
+
+	Create(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
+	AddUserGame(ctx context.Context, userID, gameID int) error
+
+	Update(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
+	UpdateStatus(ctx context.Context, userID, gameID int, status models.GameStatus) error
+	UpdatePriority(ctx context.Context, userID, gameID int, priority int) error
+
+	Delete(ctx context.Context, gameID int) error
+	DeleteUserGame(ctx context.Context, userID, gameID int) error
 }
 
+// IUploadsGames describes the Uploads methods the CRUD controller depends on.
 type IUploadsGames interface {
 	SaveImage(image []byte, filename string) error
 	DeleteImage(filename string) error
@@ -34,7 +53,13 @@ type IUploadsGames interface {
 	GenerateImageFilename(url, contentType string) string
 }
 
-func NewGameController(s service.GameService, log *slog.Logger, u IUploadsGames) *GameController {
+type GameController struct {
+	service gameService
+	log     *slog.Logger
+	uploads IUploadsGames
+}
+
+func NewGameController(s gameService, log *slog.Logger, u IUploadsGames) *GameController {
 	return &GameController{
 		service: s,
 		log:     log,

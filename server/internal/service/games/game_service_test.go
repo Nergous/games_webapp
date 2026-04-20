@@ -129,7 +129,7 @@ func (m *mockRepo) DeleteUserGame(ctx context.Context, userID, gameID int) error
 // Helpers
 // ============================================================================
 
-func newService(repo repository.GamesRepository) *games.GameService {
+func newService(repo *mockRepo) *games.GameService {
 	return games.NewGameService(repo, nil, nil)
 }
 

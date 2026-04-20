@@ -1,33 +1,12 @@
-// internal/repository/repository.go
+// Package repository defines parameter/result types and sentinel errors
+// shared between the persistence layer and its consumers (services). The
+// repository interface itself is declared on the consumer side — see
+// gamesRepo in internal/service/games/game_service.go.
 package repository
 
-import (
-	"context"
-	"games_webapp/internal/models"
-)
+import "games_webapp/internal/models"
 
-type GamesRepository interface {
-	GetByID(ctx context.Context, id int) (*models.Game, error)
-	GetAllPaginated(ctx context.Context, userID int, params GetAllParams) ([]models.UserGameResponse, int, error)
-
-	GetUserGame(ctx context.Context, userID, gameID int) (*models.UserGame, error)
-	GetUserGames(ctx context.Context, userID int, params GetUserGamesParams) ([]models.UserGameResponse, int, error)
-
-	GetUserGameStatusCounts(ctx context.Context, userID int) (StatusCounts, error)
-
-	SearchAllGames(ctx context.Context, query string) ([]models.Game, error)
-
-	CreateWithUserGame(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
-	AddUserGame(ctx context.Context, userGame *models.UserGame) error
-
-	UpdateWithUserGame(ctx context.Context, game *models.Game, userGame *models.UserGame) (*models.Game, error)
-	UpdateUserGameStatus(ctx context.Context, userID, gameID int, status models.GameStatus) error
-	UpdateUserGamePriority(ctx context.Context, userID, gameID int, priority int) error
-
-	Delete(ctx context.Context, id int) error
-	DeleteUserGame(ctx context.Context, userID, gameID int) error
-}
-
+// GetAllParams bounds and orders a global game listing.
 type GetAllParams struct {
 	Search    string
 	SortBy    string
@@ -36,6 +15,7 @@ type GetAllParams struct {
 	PageSize  int
 }
 
+// GetUserGamesParams bounds and orders a per-user game listing.
 type GetUserGamesParams struct {
 	Status    *models.GameStatus
 	Search    string
@@ -45,6 +25,7 @@ type GetUserGamesParams struct {
 	PageSize  int
 }
 
+// StatusCounts summarizes how many of each GameStatus a user owns.
 type StatusCounts struct {
 	Finished int
 	Playing  int

@@ -2,6 +2,7 @@
 package games
 
 import (
+	"context"
 	"encoding/json"
 	"log/slog"
 	"net/http"
@@ -12,16 +13,23 @@ import (
 	"games_webapp/internal/service"
 )
 
+// igdbImportService is the narrow interface the IGDB handler depends on:
+// just the batch import. Declared here (consumer side) so the controller is
+// decoupled from unrelated service capabilities.
+type igdbImportService interface {
+	BatchImportFromIGDB(ctx context.Context, userID int, requests []service.ImportGameRequest) (*service.ImportResult, error)
+}
+
 // IGDBGamesController is the HTTP adapter for the IGDB batch-import flow. All
 // orchestration (worker pool, cover download, rollback) lives in the service
 // layer; this handler's job is to decode JSON, invoke the service, and map
 // the result to an HTTP status.
 type IGDBGamesController struct {
-	service service.GameService
+	service igdbImportService
 	log     *slog.Logger
 }
 
-func NewIGDBGamesController(s service.GameService, log *slog.Logger) *IGDBGamesController {
+func NewIGDBGamesController(s igdbImportService, log *slog.Logger) *IGDBGamesController {
 	return &IGDBGamesController{service: s, log: log}
 }
 
