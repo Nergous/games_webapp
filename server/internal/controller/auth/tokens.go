@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	"games_webapp/internal/controller"
 	g_errors "games_webapp/internal/errors"
 )
 
@@ -39,16 +40,14 @@ func (c *TokensController) Refresh(w http.ResponseWriter, r *http.Request) {
 	refreshCookie, err := r.Cookie(refreshTokenCookieName)
 	if err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeUnauthorized, "", err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if refreshCookie.Value == "" {
 		se := g_errors.NewWithInfo(op, g_errors.CodeUnauthorized, "",
 			map[string]any{"info": g_errors.InvalidRefreshToken})
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 

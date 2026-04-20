@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	igdbclient "games_webapp/internal/client/igdb"
 	"games_webapp/internal/controller/games"
 	g_errors "games_webapp/internal/errors"
 	"games_webapp/internal/models"
@@ -105,6 +106,18 @@ func newIGDBController(
 	up *mockUploadsIGDB,
 ) *games.IGDBGamesController {
 	t.Helper()
+	c, _ := newIGDBControllerAndClient(t, twitchHandler, igdbHandler, svc, up)
+	return c
+}
+
+func newIGDBControllerAndClient(
+	t *testing.T,
+	twitchHandler http.HandlerFunc,
+	igdbHandler http.HandlerFunc,
+	svc *mockGameService,
+	up *mockUploadsIGDB,
+) (*games.IGDBGamesController, *igdbclient.Client) {
+	t.Helper()
 
 	twitchSrv := httptest.NewServer(twitchHandler)
 	igdbSrv := httptest.NewServer(igdbHandler)
@@ -113,15 +126,9 @@ func newIGDBController(
 		igdbSrv.Close()
 	})
 
-	return games.NewIGDBGamesController(
-		svc,
-		newLogger(),
-		up,
-		igdbSrv.URL,
-		twitchSrv.URL,
-		"client-id",
-		"client-secret",
-	)
+	client := igdbclient.New(igdbSrv.URL, twitchSrv.URL, "client-id", "client-secret")
+	ctrl := games.NewIGDBGamesController(svc, newLogger(), up, client)
+	return ctrl, client
 }
 
 func defaultHandlers() (http.HandlerFunc, http.HandlerFunc) {
@@ -234,15 +241,8 @@ func TestCreateMultiGamesIGDB_TwitchTokenError(t *testing.T) {
 	igdbSrv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {}))
 	t.Cleanup(func() { twitchSrv.Close(); igdbSrv.Close() })
 
-	c := games.NewIGDBGamesController(
-		&mockGameService{},
-		newLogger(),
-		&mockUploadsIGDB{},
-		igdbSrv.URL,
-		twitchSrv.URL,
-		"client-id",
-		"client-secret",
-	)
+	client := igdbclient.New(igdbSrv.URL, twitchSrv.URL, "client-id", "client-secret")
+	c := games.NewIGDBGamesController(&mockGameService{}, newLogger(), &mockUploadsIGDB{}, client)
 
 	r := igdbRequest(t, []map[string]any{{"name": "Portal"}})
 	w := httptest.NewRecorder()
@@ -426,19 +426,12 @@ func TestGetTwitchToken_Cached(t *testing.T) {
 	}))
 	t.Cleanup(twitchSrv.Close)
 
-	c := games.NewIGDBGamesController(
-		&mockGameService{},
-		newLogger(),
-		&mockUploadsIGDB{},
-		"http://igdb.example.com",
-		twitchSrv.URL,
-		"cid", "csecret",
-	)
+	client := igdbclient.New("http://igdb.example.com", twitchSrv.URL, "cid", "csecret")
 
-	if _, err := c.GetTwitchToken(); err != nil {
+	if _, err := client.Token(context.Background()); err != nil {
 		t.Fatalf("first call: %v", err)
 	}
-	if _, err := c.GetTwitchToken(); err != nil {
+	if _, err := client.Token(context.Background()); err != nil {
 		t.Fatalf("second call: %v", err)
 	}
 
@@ -456,18 +449,10 @@ func TestGetTwitchToken_RefreshesExpired(t *testing.T) {
 	}))
 	t.Cleanup(twitchSrv.Close)
 
-	c := games.NewIGDBGamesController(
-		&mockGameService{},
-		newLogger(),
-		&mockUploadsIGDB{},
-		"http://igdb.example.com",
-		twitchSrv.URL,
-		"cid", "csecret",
-	)
+	client := igdbclient.New("http://igdb.example.com", twitchSrv.URL, "cid", "csecret")
+	client.SetTokenForTest("old-token", time.Now().Add(-1*time.Hour))
 
-	c.SetTokenForTest("old-token", time.Now().Add(-1*time.Hour))
-
-	if _, err := c.GetTwitchToken(); err != nil {
+	if _, err := client.Token(context.Background()); err != nil {
 		t.Fatalf("refresh call: %v", err)
 	}
 	if callCount != 1 {

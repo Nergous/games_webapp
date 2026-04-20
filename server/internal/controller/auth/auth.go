@@ -9,6 +9,7 @@ import (
 	"net/http"
 	"strings"
 
+	"games_webapp/internal/controller"
 	g_errors "games_webapp/internal/errors"
 )
 
@@ -58,8 +59,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -71,16 +71,14 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 
 	if err := c.validateRegister(&request); err != nil {
 		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	file, _, err := r.FormFile("image")
 	if err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidImage, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 	defer file.Close()
@@ -88,16 +86,14 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	imageData, err := io.ReadAll(file)
 	if err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInternal, g_errors.InvalidImage, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	imageFilename := c.uploads.GenerateImageFilename(request.Email, http.DetectContentType(imageData))
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
 		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -106,8 +102,7 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	userID, err := c.client.Register(r.Context(), cleanedEmail, request.Password, request.SteamURL, imageFilename)
 	if err != nil {
 		se := g_errors.NewFromGRPC(op, err) // ← единая точка обработки gRPC-ошибок
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -122,15 +117,13 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	var req LoginRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.validateLogin(&req); err != nil {
 		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -139,8 +132,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	accessToken, refreshToken, err := c.client.Login(r.Context(), cleanedEmail, req.Password, req.AppId)
 	if err != nil {
 		se := g_errors.NewFromGRPC(op, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 

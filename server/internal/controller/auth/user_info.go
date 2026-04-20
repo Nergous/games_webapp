@@ -74,8 +74,7 @@ func (c *UserInfoController) GetUserInfo(w http.ResponseWriter, r *http.Request)
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
 		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -100,16 +99,14 @@ func (c *UserInfoController) GetUsers(w http.ResponseWriter, r *http.Request) {
 	isAdmin := controller.GetIsAdmin(r.Context())
 	if !isAdmin {
 		se := g_errors.New(op, g_errors.CodeForbidden, g_errors.NotAdminOrCreator)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	resp, err := c.client.GetUsersForApp(r.Context(), c.appID)
 	if err != nil {
 		se := g_errors.NewFromGRPC(op, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -136,16 +133,14 @@ func (c *UserInfoController) UpdateUser(w http.ResponseWriter, r *http.Request) 
 	isAdmin := controller.GetIsAdmin(r.Context())
 	if !isAdmin {
 		se := g_errors.New(op, g_errors.CodeForbidden, g_errors.NotAdminOrCreator)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	var user UpdateUserRequest
 	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -166,8 +161,7 @@ func (c *UserInfoController) DeleteUser(w http.ResponseWriter, r *http.Request) 
 	isAdmin := controller.GetIsAdmin(r.Context())
 	if !isAdmin {
 		se := g_errors.New(op, g_errors.CodeForbidden, g_errors.NotAdminOrCreator)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -175,8 +169,7 @@ func (c *UserInfoController) DeleteUser(w http.ResponseWriter, r *http.Request) 
 	idInt, err := strconv.ParseUint(idStr, 10, 32)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidUserID, map[string]any{"id": idStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 

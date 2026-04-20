@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"net/http"
 
+	igdbclient "games_webapp/internal/client/igdb"
 	"games_webapp/internal/config"
 	authcontroller "games_webapp/internal/controller/auth"
 	gamescontroller "games_webapp/internal/controller/games"
@@ -48,7 +49,8 @@ func SetupRouter(
 	gameRepo := mariadb.NewGamesRepository(store.GetDB())
 	gameService := games.NewGameService(gameRepo)
 	gameController := gamescontroller.NewGameController(gameService, log, uploadsStorage)
-	igdbGameController := gamescontroller.NewIGDBGamesController(gameService, log, uploadsStorage, cfg.TwitchAPI, cfg.TwitchAuthAPI, cfg.TwitchClientId, cfg.TwitchClientSecret)
+	igdbCl := igdbclient.New(cfg.TwitchAPI, cfg.TwitchAuthAPI, cfg.TwitchClientId, cfg.TwitchClientSecret)
+	igdbGameController := gamescontroller.NewIGDBGamesController(gameService, log, uploadsStorage, igdbCl)
 
 	authController := authcontroller.NewAuthController(log, ssoClient, uploadsStorage, cfg.AppID)
 	tokensController := authcontroller.NewTokensController(log, ssoClient)

@@ -61,16 +61,13 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	res, err := c.service.GetByID(r.Context(), int(gameID))
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -85,9 +82,7 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -105,9 +100,7 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 	games, total, err := c.service.GetAll(r.Context(), userID, params)
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -138,9 +131,7 @@ func (c *GameController) SearchAllGames(w http.ResponseWriter, r *http.Request) 
 
 	games, err := c.service.SearchAllGames(r.Context(), query)
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -155,9 +146,7 @@ func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -165,16 +154,13 @@ func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	result, err := c.service.GetUserGame(r.Context(), userID, int(gameID))
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -189,9 +175,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -216,9 +200,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 
 	games, total, err := c.service.GetUserGames(r.Context(), userID, params)
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -244,17 +226,13 @@ func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	counts, err := c.service.GetGameStats(r.Context(), userID)
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -269,16 +247,13 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -292,8 +267,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidImage, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 	defer file.Close()
@@ -301,16 +275,14 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	imageData, err := io.ReadAll(file)
 	if err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	imageFilename := c.uploads.GenerateImageFilename(header.Filename, header.Header.Get("Content-Type"))
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
@@ -337,9 +309,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	res, err := c.service.Create(r.Context(), game, userGame)
 	if err != nil {
 		_ = c.uploads.DeleteImage(imageFilename)
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -354,9 +324,7 @@ func (c *GameController) AddUserGame(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -364,19 +332,32 @@ func (c *GameController) AddUserGame(w http.ResponseWriter, r *http.Request) {
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.service.AddUserGame(r.Context(), userID, int(gameID)); err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	w.WriteHeader(http.StatusCreated)
+}
+
+// gameUpdateFields is the assembled payload from either multipart or JSON
+// Update requests, with the image filename already resolved against the
+// existing game (fallback applied when a new image isn't provided).
+type gameUpdateFields struct {
+	Title     string
+	Preambula string
+	Developer string
+	Publisher string
+	Year      string
+	Genre     string
+	URL       string
+	Image     string
+	Priority  int
+	Status    models.GameStatus
 }
 
 func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
@@ -385,154 +366,163 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	existingGame, err := c.service.GetByID(r.Context(), int(gameID))
+	existingGame, err := c.service.GetByID(r.Context(), gameID)
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	isAdmin := controller.GetIsAdmin(r.Context())
-	if !isAdmin && existingGame.Creator != userID {
-		se := g_errors.NewWithInfo(op, g_errors.CodeForbidden, g_errors.NotAdminOrCreator,
-			map[string]any{"userID": userID, "creator": existingGame.Creator})
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+	if !controller.GetIsAdmin(r.Context()) && existingGame.Creator != userID {
+		controller.WriteError(w, log, g_errors.NewWithInfo(op, g_errors.CodeForbidden, g_errors.NotAdminOrCreator,
+			map[string]any{"userID": userID, "creator": existingGame.Creator}))
 		return
 	}
 
-	contentType := r.Header.Get("Content-Type")
-	var imageFilename string
-	var priority int
-	var status models.GameStatus
-	var title, preambula, developer, publisher, year, genre, url string
-
-	switch {
-	case strings.HasPrefix(contentType, "multipart/form-data"):
-		if err := r.ParseMultipartForm(maxUploadSize); err != nil {
-			se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-			log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-			http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
-			return
-		}
-
-		title = r.FormValue("title")
-		preambula = r.FormValue("preambula")
-		developer = r.FormValue("developer")
-		publisher = r.FormValue("publisher")
-		year = r.FormValue("year")
-		genre = r.FormValue("genre")
-		url = r.FormValue("url")
-		status = models.GameStatus(r.FormValue("status"))
-		priority, err = strconv.Atoi(r.FormValue("priority"))
-		if err != nil {
-			priority = 0
-		}
-
-		file, header, err := r.FormFile("image")
-		if err == nil {
-			defer file.Close()
-			imageData, err := io.ReadAll(file)
-			if err != nil {
-				se := g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-				log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-				http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
-				return
-			}
-			imageFilename = c.uploads.GenerateImageFilename(header.Filename, header.Header.Get("Content-Type"))
-			if err := c.uploads.ReplaceImage(imageData, existingGame.Image, imageFilename); err != nil {
-				se := g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-				log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-				http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
-				return
-			}
-		} else {
-			imageFilename = existingGame.Image
-		}
-
-	case strings.HasPrefix(contentType, "application/json"):
-		var body map[string]any
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
-			se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-			log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-			http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
-			return
-		}
-		title, _ = body["title"].(string)
-		preambula, _ = body["preambula"].(string)
-		developer, _ = body["developer"].(string)
-		publisher, _ = body["publisher"].(string)
-		year, _ = body["year"].(string)
-		genre, _ = body["genre"].(string)
-		url, _ = body["url"].(string)
-		imageFilename, _ = body["image"].(string)
-
-		if imageFilename == "" {
-			imageFilename = existingGame.Image
-		}
-		if s, ok := body["status"].(string); ok {
-			status = models.GameStatus(s)
-		}
-		if p, ok := body["priority"].(float64); ok {
-			priority = int(p)
-		}
-
-	default:
-		se := g_errors.New(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+	fields, err := c.parseUpdateRequest(r, existingGame, op)
+	if err != nil {
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	now := time.Now()
 	game := &models.Game{
-		ID:        int(gameID),
-		Title:     title,
-		Preambula: preambula,
-		Image:     imageFilename,
-		Developer: developer,
-		Publisher: publisher,
-		Year:      year,
-		Genre:     genre,
-		URL:       url,
+		ID:        gameID,
+		Title:     fields.Title,
+		Preambula: fields.Preambula,
+		Image:     fields.Image,
+		Developer: fields.Developer,
+		Publisher: fields.Publisher,
+		Year:      fields.Year,
+		Genre:     fields.Genre,
+		URL:       fields.URL,
 		Creator:   existingGame.Creator,
 		CreatedAt: existingGame.CreatedAt,
 		UpdatedAt: &now,
 	}
 	userGame := &models.UserGame{
 		UserID:   userID,
-		GameID:   int(gameID),
-		Priority: priority,
-		Status:   status,
+		GameID:   gameID,
+		Priority: fields.Priority,
+		Status:   fields.Status,
 	}
 
 	res, err := c.service.Update(r.Context(), game, userGame)
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(res)
+}
+
+// parseUpdateRequest dispatches to the appropriate parser by Content-Type.
+func (c *GameController) parseUpdateRequest(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
+	contentType := r.Header.Get("Content-Type")
+	switch {
+	case strings.HasPrefix(contentType, "multipart/form-data"):
+		return c.parseMultipartUpdate(r, existing, op)
+	case strings.HasPrefix(contentType, "application/json"):
+		return parseJSONUpdate(r, existing, op)
+	default:
+		return gameUpdateFields{}, g_errors.New(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm)
+	}
+}
+
+// parseMultipartUpdate parses a multipart/form-data Update request. If a new
+// image is supplied, it replaces the existing one on disk; otherwise the
+// existing image filename is preserved.
+func (c *GameController) parseMultipartUpdate(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
+	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
+	}
+
+	priority, err := strconv.Atoi(r.FormValue("priority"))
+	if err != nil {
+		priority = 0
+	}
+
+	fields := gameUpdateFields{
+		Title:     r.FormValue("title"),
+		Preambula: r.FormValue("preambula"),
+		Developer: r.FormValue("developer"),
+		Publisher: r.FormValue("publisher"),
+		Year:      r.FormValue("year"),
+		Genre:     r.FormValue("genre"),
+		URL:       r.FormValue("url"),
+		Status:    models.GameStatus(r.FormValue("status")),
+		Priority:  priority,
+		Image:     existing.Image,
+	}
+
+	file, header, err := r.FormFile("image")
+	if err != nil {
+		return fields, nil
+	}
+	defer file.Close()
+
+	imageData, err := io.ReadAll(file)
+	if err != nil {
+		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
+	}
+
+	newName := c.uploads.GenerateImageFilename(header.Filename, header.Header.Get("Content-Type"))
+	if err := c.uploads.ReplaceImage(imageData, existing.Image, newName); err != nil {
+		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
+	}
+	fields.Image = newName
+	return fields, nil
+}
+
+// parseJSONUpdate parses an application/json Update request. A missing or
+// empty "image" field falls back to the existing image filename.
+func parseJSONUpdate(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
+	var body map[string]any
+	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
+	}
+
+	fields := gameUpdateFields{}
+	fields.Title, _ = body["title"].(string)
+	fields.Preambula, _ = body["preambula"].(string)
+	fields.Developer, _ = body["developer"].(string)
+	fields.Publisher, _ = body["publisher"].(string)
+	fields.Year, _ = body["year"].(string)
+	fields.Genre, _ = body["genre"].(string)
+	fields.URL, _ = body["url"].(string)
+	fields.Image, _ = body["image"].(string)
+	if fields.Image == "" {
+		fields.Image = existing.Image
+	}
+	if s, ok := body["status"].(string); ok {
+		fields.Status = models.GameStatus(s)
+	}
+	if p, ok := body["priority"].(float64); ok {
+		fields.Priority = int(p)
+	}
+	return fields, nil
+}
+
+// parseGameID extracts and validates the "id" chi URL parameter.
+func parseGameID(r *http.Request, op string) (int, error) {
+	idStr := chi.URLParam(r, "id")
+	id, err := strconv.ParseInt(idStr, 10, 64)
+	if err != nil {
+		return 0, g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID,
+			map[string]any{"id": idStr}, err)
+	}
+	return int(id), nil
 }
 
 type UpdatePriorityRequest struct {
@@ -545,9 +535,7 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -555,23 +543,19 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	var req UpdatePriorityRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.service.UpdatePriority(r.Context(), userID, int(gameID), req.Priority); err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -588,9 +572,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -598,23 +580,19 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	var req UpdateStatusRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.service.UpdateStatus(r.Context(), userID, int(gameID), models.GameStatus(req.Status)); err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -627,9 +605,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -638,16 +614,13 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID,
 			map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	game, err := c.service.GetByID(r.Context(), int(gameID))
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -655,22 +628,18 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	if !isAdmin && game.Creator != userID {
 		se := g_errors.NewWithInfo(op, g_errors.CodeForbidden, g_errors.NotAdminOrCreator,
 			map[string]any{"userID": userID, "creator": game.Creator})
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.uploads.DeleteImage(game.Image); err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDeleteFile, map[string]any{"image": game.Image}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.service.Delete(r.Context(), int(gameID)); err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -683,9 +652,7 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -693,15 +660,12 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
 	if err != nil {
 		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, se)
 		return
 	}
 
 	if err := c.service.DeleteUserGame(r.Context(), userID, int(gameID)); err != nil {
-		se, _ := g_errors.AsServiceError(err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("error", err))
-		http.Error(w, g_errors.PublicMessage(se), g_errors.HttpStatusFromErr(se))
+		controller.WriteError(w, log, err)
 		return
 	}
 
