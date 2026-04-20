@@ -1,6 +1,11 @@
 env: local
 uploads_path: ../uploads
 app_secret: test-secret
+app_id: 1
+twitch_client_id:
+twitch_client_secret:
+twitch_api:
+twitch_auth_api:
 
 database:
     host: localhost

@@ -1,19 +1,23 @@
+// internal/middleware/auth.go
 package middleware
 
 import (
 	"context"
+	"log/slog"
 	"net/http"
 	"strings"
 
-	"games_webapp/internal/clients/sso/grpc"
+	"games_webapp/internal/client/sso/grpc"
 )
 
 type AuthMiddleware struct {
 	ssoClient *grpc.Client
+	appID     uint32
+	log       *slog.Logger
 }
 
-func NewAuthMiddleware(client *grpc.Client) *AuthMiddleware {
-	return &AuthMiddleware{ssoClient: client}
+func NewAuthMiddleware(client *grpc.Client, appID uint32, log *slog.Logger) *AuthMiddleware {
+	return &AuthMiddleware{ssoClient: client, appID: appID, log: log}
 }
 
 type contextKey string
@@ -44,8 +48,11 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 			return
 		}
 
-		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID, 1)
+		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID, m.appID)
 		if err != nil {
+			m.log.Warn("IsAdmin check failed, defaulting to non-admin",
+				slog.Any("userID", userID),
+				slog.Any("error", err))
 			isAdmin = false
 		}
 

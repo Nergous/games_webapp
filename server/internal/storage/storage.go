@@ -1,11 +1,31 @@
+// internal/storage/storage.go
 package storage
 
-import "errors"
-
-var (
-	ErrNotFound     = errors.New("not found")
-	ErrExists       = errors.New("already exists")
-	ErrCreateFailed = errors.New("failed to create")
-	ErrUpdateFailed = errors.New("failed to update")
-	ErrDeleteFailed = errors.New("failed to delete")
+import (
+	"context"
+	"database/sql"
 )
+
+// Storage defines a database abstraction layer.
+//
+// Expected:
+//   - Implementations must provide connection lifecycle management.
+//   - Implementations must support migrations.
+//
+// Behavior:
+//   - Close releases underlying resources.
+//   - Migrate creates required schema if not exists.
+//   - MigrateRefresh resets database state for testing.
+//
+// Response:
+//   - error is returned if underlying DB operation fails.
+type Storage interface {
+	Close() error
+	Migrate() error
+	MigrateRefresh(ctx context.Context) error
+}
+
+type DBProvider interface {
+	Storage
+	GetDB() *sql.DB
+}

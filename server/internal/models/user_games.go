@@ -1,3 +1,4 @@
+// internal/models/user_games.go
 package models
 
 type GameStatus string
@@ -9,10 +10,18 @@ const (
 	StatusDropped  GameStatus = "dropped"
 )
 
-type UserGames struct {
-	ID       int        `json:"id" gorm:"primary_key"`
+func (s GameStatus) IsValid() bool {
+	switch s {
+	case StatusPlanned, StatusPlaying, StatusFinished, StatusDropped:
+		return true
+	}
+	return false
+}
+
+type UserGame struct {
+	ID       int        `json:"id"`
 	UserID   int        `json:"user_id"`
 	GameID   int        `json:"game_id"`
 	Priority int        `json:"priority"`
-	Status   GameStatus `json:"status" gorm:"type:varchar(20);default:'planned'"`
+	Status   GameStatus `json:"status"`
 }

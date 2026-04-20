@@ -1,3 +1,4 @@
+// internal/routes/router.go
 package routes
 
 import (
@@ -6,9 +7,11 @@ import (
 	"net/http"
 
 	"games_webapp/internal/config"
-	"games_webapp/internal/controllers"
-	games_middleware "games_webapp/internal/middleware"
-	"games_webapp/internal/services"
+	authcontroller "games_webapp/internal/controller/auth"
+	gamescontroller "games_webapp/internal/controller/games"
+	gamesmiddleware "games_webapp/internal/middleware"
+	"games_webapp/internal/service/games"
+	"games_webapp/internal/storage"
 	"games_webapp/internal/storage/mariadb"
 	"games_webapp/internal/storage/uploads"
 
@@ -16,20 +19,23 @@ import (
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
 
-	ssogrpc "games_webapp/internal/clients/sso/grpc"
+	ssogrpc "games_webapp/internal/client/sso/grpc"
 )
 
 func SetupRouter(
 	log *slog.Logger,
-	storage *mariadb.Storage,
-	uploads *uploads.Uploads,
-	authMiddleware *games_middleware.AuthMiddleware,
+	store storage.DBProvider,
+	uploadsStorage *uploads.Uploads,
+	authMiddleware *gamesmiddleware.AuthMiddleware,
 	ssoClient *ssogrpc.Client,
 	cfg *config.Config,
 ) *chi.Mux {
 	r := chi.NewRouter()
 
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
 	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
 
 	r.Use(cors.Handler(cors.Options{
 		AllowedOrigins:   cfg.Cors,
@@ -39,59 +45,70 @@ func SetupRouter(
 		MaxAge:           300,
 	}))
 
-	gameService := services.NewGameService(storage, log)
-	gameController := controllers.NewGameController(gameService, log, uploads, cfg.TwitchClientId, cfg.TwitchClientSecret)
+	gameRepo := mariadb.NewGamesRepository(store.GetDB())
+	gameService := games.NewGameService(gameRepo)
+	gameController := gamescontroller.NewGameController(gameService, log, uploadsStorage)
+	igdbGameController := gamescontroller.NewIGDBGamesController(gameService, log, uploadsStorage, cfg.TwitchAPI, cfg.TwitchAuthAPI, cfg.TwitchClientId, cfg.TwitchClientSecret)
 
-	authController := controllers.NewAuthController(log, ssoClient, uploads)
+	authController := authcontroller.NewAuthController(log, ssoClient, uploadsStorage, cfg.AppID)
+	tokensController := authcontroller.NewTokensController(log, ssoClient)
+	userInfoController := authcontroller.NewUserInfoController(log, ssoClient, cfg.AppID)
 
 	r.Route("/api", func(r chi.Router) {
-		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
-			response := map[string]interface{}{
-				"status": "ok",
-			}
-			w.Header().Set("Content-Type", "application/json")
-			if err := json.NewEncoder(w).Encode(response); err != nil {
-				http.Error(w, err.Error(), http.StatusInternalServerError)
-			}
-			w.WriteHeader(http.StatusOK)
-		})
+		r.Get("/health", healthHandler)
+
+		// Auth (public)
 		r.Post("/register", authController.Register)
 		r.Post("/login", authController.Login)
 		r.Post("/logout", authController.Logout)
-		r.Post("/refresh", authController.Refresh)
+		r.Post("/refresh", tokensController.Refresh)
 
-		r.Route("/users", func(r chi.Router) {
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.ValidateToken)
-				r.Get("/", authController.GetUsers)
-				r.Put("/{id}", authController.UpdateUser)
-				r.Delete("/{id}", authController.DeleteUser)
+		// Protected routes
+
+		r.Group(func(r chi.Router) {
+			r.Use(authMiddleware.ValidateToken)
+
+			// User profile
+			r.Get("/me", userInfoController.GetUserInfo)
+
+			// Admin: user management
+			r.Route("/users", func(r chi.Router) {
+				r.Get("/", userInfoController.GetUsers)
+				r.Put("/{id}", userInfoController.UpdateUser)
+				r.Delete("/{id}", userInfoController.DeleteUser)
 			})
-		})
 
-		r.Route("/games", func(r chi.Router) {
-			r.Group(func(r chi.Router) {
-				r.Use(authMiddleware.ValidateToken)
+			// Games
+			r.Route("/games", func(r chi.Router) {
 				r.Get("/", gameController.GetAll)
-				r.Get("/user", gameController.GetUserGames)
-				r.Get("/user/info", authController.GetUserInfo)
-				r.Get("/user/stats", gameController.GetGameStats)
-
-				r.Post("/twitch", gameController.CreateMultiGamesIGDB)
-
 				r.Get("/search", gameController.SearchAllGames)
 				r.Post("/", gameController.Create)
+				r.Post("/twitch", igdbGameController.CreateMultiGamesIGDB)
+
+				// Current user's game list
+				r.Get("/user", gameController.GetUserGames)
+				r.Get("/user/stats", gameController.GetGameStats)
+
 				r.Route("/{id}", func(r chi.Router) {
 					r.Get("/", gameController.GetByID)
+					r.Get("/user-game", gameController.GetUserGame)
+					r.Post("/add", gameController.AddUserGame)
 					r.Put("/", gameController.Update)
 					r.Put("/status", gameController.UpdateStatus)
 					r.Put("/priority", gameController.UpdatePriority)
 					r.Delete("/", gameController.Delete)
-					r.Delete("/delete-user-game", gameController.DeleteUserGame)
+					r.Delete("/user-game", gameController.DeleteUserGame)
 				})
+
 			})
 		})
 	})
 
 	return r
+}
+
+func healthHandler(w http.ResponseWriter, r *http.Request) {
+	w.Header().Set("Content-Type", "application/json")
+	w.WriteHeader(http.StatusOK)
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "ok"})
 }

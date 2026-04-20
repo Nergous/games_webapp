@@ -1,3 +1,4 @@
+// internal/models/games.go
 package models
 
 import (
@@ -5,7 +6,7 @@ import (
 )
 
 type Game struct {
-	ID        int    `json:"id" gorm:"primary_key"`
+	ID        int    `json:"id"`
 	Title     string `json:"title"`
 	Preambula string `json:"preambula"`
 	Image     string `json:"image"`
@@ -16,8 +17,8 @@ type Game struct {
 	Creator   int    `json:"creator"`
 
 	URL       string     `json:"url"`
-	CreatedAt *time.Time `json:"created_at" gorm:"type:timestamp"`
-	UpdatedAt *time.Time `json:"updated_at" gorm:"type:timestamp"`
+	CreatedAt *time.Time `json:"created_at"`
+	UpdatedAt *time.Time `json:"updated_at"`
 }
 
 type UserGameResponse struct {
