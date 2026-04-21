@@ -8,8 +8,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"io"
 	"net/http"
+	"net/url"
 	"strings"
 	"sync"
 	"time"
@@ -86,11 +86,6 @@ func (c *Client) GetGame(ctx context.Context, name, slug string) (*GameInfo, err
 	}
 	defer resp.Body.Close()
 
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return nil, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-	}
-
 	var results []struct {
 		Name             string `json:"name"`
 		Summary          string `json:"summary"`
@@ -110,9 +105,11 @@ func (c *Client) GetGame(ctx context.Context, name, slug string) (*GameInfo, err
 			Name string `json:"name"`
 		} `json:"genres"`
 	}
-	if err := json.Unmarshal(payload, &results); err != nil {
-		return nil, g_errors.WrapWithInfo(op, g_errors.CodeInternal, "",
-			map[string]any{"body": string(payload)}, err)
+	// Stream-decode the response directly from the socket instead of buffering
+	// the whole payload in memory first. IGDB replies are modest in normal
+	// operation but can grow unexpectedly on large "search" matches.
+	if err := json.NewDecoder(resp.Body).Decode(&results); err != nil {
+		return nil, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
 	}
 	if len(results) == 0 {
 		return nil, g_errors.NewWithInfo(op, g_errors.CodeNotFound, g_errors.GameNotFound,
@@ -201,13 +198,19 @@ func (c *Client) loginTwitch(parent context.Context) (token string, expiresIn in
 	ctx, cancel := context.WithTimeout(parent, twitchAuthTimeout)
 	defer cancel()
 
-	url := fmt.Sprintf("%s?client_id=%s&client_secret=%s&grant_type=client_credentials",
-		c.authURL, c.clientID, c.clientSecret)
-
-	req, err := http.NewRequestWithContext(ctx, "POST", url, nil)
+	// Send credentials in the POST body rather than the query string: URLs
+	// routinely appear in proxy/access logs, so `client_secret` as a query
+	// parameter leaks the secret to anything watching the request line.
+	form := url.Values{
+		"client_id":     {c.clientID},
+		"client_secret": {c.clientSecret},
+		"grant_type":    {"client_credentials"},
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.authURL, strings.NewReader(form.Encode()))
 	if err != nil {
 		return "", 0, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
 	}
+	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
 
 	resp, err := c.http.Do(req)
 	if err != nil {
@@ -215,24 +218,24 @@ func (c *Client) loginTwitch(parent context.Context) (token string, expiresIn in
 	}
 	defer resp.Body.Close()
 
-	payload, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", 0, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-	}
-
 	var data struct {
 		AccessToken string `json:"access_token"`
 		ExpiresIn   int    `json:"expires_in"`
 	}
-	if err := json.Unmarshal(payload, &data); err != nil {
-		return "", 0, g_errors.WrapWithInfo(op, g_errors.CodeInternal, "",
-			map[string]any{"body": string(payload)}, err)
+	if err := json.NewDecoder(resp.Body).Decode(&data); err != nil {
+		return "", 0, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
 	}
 	return data.AccessToken, data.ExpiresIn, nil
 }
 
 // ExtractSlug pulls the last path segment from an IGDB game URL like
-// https://www.igdb.com/games/half-life-2 → "half-life-2".
+// https://www.igdb.com/games/half-life-2 → "half-life-2", and validates it
+// against IGDB's actual slug character set.
+//
+// IGDB slugs are lowercase ASCII alphanumerics plus '-'. We enforce that
+// here (a strict whitelist) rather than relying solely on escapeApicalypse
+// at the query-building stage — layered defense against Apicalypse
+// injection, and a cheap sanity check on upstream URLs.
 func ExtractSlug(igdbURL string) (string, error) {
 	parts := strings.Split(strings.TrimRight(igdbURL, "/"), "/")
 	if len(parts) < 2 {
@@ -242,7 +245,26 @@ func ExtractSlug(igdbURL string) (string, error) {
 	if slug == "" {
 		return "", fmt.Errorf("empty slug in url: %s", igdbURL)
 	}
+	if !isValidSlug(slug) {
+		return "", fmt.Errorf("invalid slug characters in url: %s", igdbURL)
+	}
 	return slug, nil
+}
+
+// isValidSlug returns true iff s is non-empty and consists only of
+// [a-z0-9-]. Kept inline instead of regexp to avoid a compile-time
+// dependency on a regex package for what is a two-line loop.
+func isValidSlug(s string) bool {
+	for _, r := range s {
+		switch {
+		case r >= 'a' && r <= 'z':
+		case r >= '0' && r <= '9':
+		case r == '-':
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // escapeApicalypse neutralises characters that could break out of the

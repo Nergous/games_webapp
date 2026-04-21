@@ -24,6 +24,12 @@ func New(cfg config.Database) (*Storage, error) {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
 
+	// Apply pool limits BEFORE the Ping so a misconfigured pool doesn't
+	// quietly race the first request after startup.
+	db.SetMaxOpenConns(cfg.MaxOpenConns)
+	db.SetMaxIdleConns(cfg.MaxIdleConns)
+	db.SetConnMaxLifetime(cfg.ConnMaxLifetime)
+
 	if err := db.Ping(); err != nil {
 		_ = db.Close()
 		return nil, fmt.Errorf("%s: ping: %w", op, err)
@@ -67,7 +73,15 @@ func (s *Storage) Close() error {
 	return nil
 }
 
+// Migrate runs the full schema migration using a background context. Kept
+// for callers that don't manage a context themselves (mainly tests).
 func (s *Storage) Migrate() error {
+	return s.MigrateContext(context.Background())
+}
+
+// MigrateContext runs the full schema migration under ctx, so a stuck DB
+// fails the command instead of blocking indefinitely.
+func (s *Storage) MigrateContext(ctx context.Context) error {
 	const op = "storage.mariadb.Migrate"
 
 	if s.db == nil {
@@ -88,7 +102,11 @@ func (s *Storage) Migrate() error {
 			url 		VARCHAR(255) NOT NULL,
 			created_at 	TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP,
 			updated_at 	TIMESTAMP NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
-			UNIQUE KEY 	idx_games_url (url)
+			UNIQUE KEY 	idx_games_url (url),
+			-- FULLTEXT on title replaces the O(n) LIKE '%s%' scans in game search.
+			-- Boolean mode is used at query time so callers can append '*' for
+			-- prefix matching on the last token.
+			FULLTEXT KEY ft_games_title (title)
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
 
 	userGamesTable := `
@@ -105,12 +123,21 @@ func (s *Storage) Migrate() error {
 				FOREIGN KEY (game_id) REFERENCES games(id) ON DELETE CASCADE
 		) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;`
 
-	if _, err := s.db.Exec(gameTable); err != nil {
+	if _, err := s.db.ExecContext(ctx, gameTable); err != nil {
 		return fmt.Errorf("%s: create games table: %w", op, err)
 	}
 
-	if _, err := s.db.Exec(userGamesTable); err != nil {
+	if _, err := s.db.ExecContext(ctx, userGamesTable); err != nil {
 		return fmt.Errorf("%s: create user_games table: %w", op, err)
+	}
+
+	// Ensure the FULLTEXT index exists on pre-existing databases where
+	// CREATE TABLE IF NOT EXISTS above is a no-op. MariaDB 10.0+ and
+	// MySQL 8.0+ both support CREATE FULLTEXT INDEX IF NOT EXISTS.
+	if _, err := s.db.ExecContext(ctx,
+		`CREATE FULLTEXT INDEX IF NOT EXISTS ft_games_title ON games(title)`,
+	); err != nil {
+		return fmt.Errorf("%s: create ft index: %w", op, err)
 	}
 
 	return nil
@@ -131,7 +158,7 @@ func (s *Storage) MigrateRefresh(ctx context.Context) error {
 		return fmt.Errorf("%s: failed to clear games: %w", op, err)
 	}
 
-	if err := s.Migrate(); err != nil {
+	if err := s.MigrateContext(ctx); err != nil {
 		return fmt.Errorf("%s: migrate failed: %w", op, err)
 	}
 

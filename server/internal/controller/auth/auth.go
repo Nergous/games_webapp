@@ -3,7 +3,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -13,13 +12,17 @@ import (
 	g_errors "games_webapp/internal/errors"
 )
 
-const maxUploadSize = 10 << 20 // 10 MiB
+// defaultMaxUploadBytes is the fallback cap used when NewAuthController is
+// called with a non-positive value (tests). Production wires the real limit
+// from config.Uploads.MaxUploadBytes.
+const defaultMaxUploadBytes int64 = 10 << 20 // 10 MiB
 
 type AuthController struct {
-	log     *slog.Logger
-	client  GRPCAuthClient
-	uploads IUploadsAuth
-	appID   uint32
+	log            *slog.Logger
+	client         GRPCAuthClient
+	uploads        IUploadsAuth
+	appID          uint32
+	maxUploadBytes int64
 }
 
 type GRPCAuthClient interface {
@@ -33,8 +36,13 @@ type IUploadsAuth interface {
 	GenerateImageFilename(url, contentType string) string
 }
 
-func NewAuthController(log *slog.Logger, client GRPCAuthClient, uploads IUploadsAuth, appID uint32) *AuthController {
-	return &AuthController{log: log, client: client, uploads: uploads, appID: appID}
+// NewAuthController wires the controller. maxUploadBytes caps the multipart
+// body for Register; pass 0 to use defaultMaxUploadBytes.
+func NewAuthController(log *slog.Logger, client GRPCAuthClient, uploads IUploadsAuth, appID uint32, maxUploadBytes int64) *AuthController {
+	if maxUploadBytes <= 0 {
+		maxUploadBytes = defaultMaxUploadBytes
+	}
+	return &AuthController{log: log, client: client, uploads: uploads, appID: appID, maxUploadBytes: maxUploadBytes}
 }
 
 type RegisterRequest struct {
@@ -55,9 +63,9 @@ type LoginResponse struct {
 
 func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.auth.Register"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	if err := r.ParseMultipartForm(c.maxUploadBytes); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 		controller.WriteError(w, log, se)
 		return
@@ -111,10 +119,10 @@ func (c *AuthController) Register(w http.ResponseWriter, r *http.Request) {
 
 func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.auth.Login"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	var req LoginRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := controller.DecodeJSON(w, r, &req); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 		controller.WriteError(w, log, se)
 		return
@@ -151,7 +159,7 @@ func (c *AuthController) Login(w http.ResponseWriter, r *http.Request) {
 
 func (c *AuthController) Logout(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.auth.Logout"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	refreshCookie, err := r.Cookie(refreshTokenCookieName)
 	if err == nil && refreshCookie.Value != "" {

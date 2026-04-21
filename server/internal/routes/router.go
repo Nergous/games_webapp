@@ -6,31 +6,34 @@ import (
 	"log/slog"
 	"net/http"
 
-	igdbclient "games_webapp/internal/client/igdb"
-	"games_webapp/internal/config"
 	authcontroller "games_webapp/internal/controller/auth"
 	gamescontroller "games_webapp/internal/controller/games"
-	gamesmiddleware "games_webapp/internal/middleware"
-	"games_webapp/internal/service/games"
-	"games_webapp/internal/storage"
-	"games_webapp/internal/storage/mariadb"
-	"games_webapp/internal/storage/uploads"
 
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
 	"github.com/go-chi/cors"
-
-	ssogrpc "games_webapp/internal/client/sso/grpc"
 )
 
-func SetupRouter(
-	log *slog.Logger,
-	store storage.DBProvider,
-	uploadsStorage *uploads.Uploads,
-	authMiddleware *gamesmiddleware.AuthMiddleware,
-	ssoClient *ssogrpc.Client,
-	cfg *config.Config,
-) *chi.Mux {
+// Handlers bundles the already-constructed HTTP controllers and the auth
+// middleware. The composition root (cmd/games) owns construction; the router
+// owns only URL-to-handler mapping. This keeps SetupRouter a pure routing
+// function and removes its transitive dependency on the storage, IGDB client,
+// uploads, SSO, and service packages.
+type Handlers struct {
+	Game     *gamescontroller.GameController
+	IGDBGame *gamescontroller.IGDBGamesController
+	Auth     *authcontroller.AuthController
+	Tokens   *authcontroller.TokensController
+	UserInfo *authcontroller.UserInfoController
+
+	// AuthMiddleware is applied to the protected route group.
+	AuthMiddleware func(http.Handler) http.Handler
+
+	// CorsOrigins is passed through to the chi cors middleware.
+	CorsOrigins []string
+}
+
+func SetupRouter(log *slog.Logger, h Handlers) *chi.Mux {
 	r := chi.NewRouter()
 
 	r.Use(middleware.RequestID)
@@ -39,69 +42,57 @@ func SetupRouter(
 	r.Use(middleware.Recoverer)
 
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   cfg.Cors,
+		AllowedOrigins:   h.CorsOrigins,
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"},
 		AllowCredentials: true,
 		MaxAge:           300,
 	}))
 
-	gameRepo := mariadb.NewGamesRepository(store.GetDB())
-	igdbCl := igdbclient.New(cfg.TwitchAPI, cfg.TwitchAuthAPI, cfg.TwitchClientId, cfg.TwitchClientSecret)
-	gameService := games.NewGameService(gameRepo, igdbCl, uploadsStorage)
-	gameController := gamescontroller.NewGameController(gameService, log, uploadsStorage)
-	igdbGameController := gamescontroller.NewIGDBGamesController(gameService, log)
-
-	authController := authcontroller.NewAuthController(log, ssoClient, uploadsStorage, cfg.AppID)
-	tokensController := authcontroller.NewTokensController(log, ssoClient)
-	userInfoController := authcontroller.NewUserInfoController(log, ssoClient, cfg.AppID)
-
 	r.Route("/api", func(r chi.Router) {
 		r.Get("/health", healthHandler)
 
 		// Auth (public)
-		r.Post("/register", authController.Register)
-		r.Post("/login", authController.Login)
-		r.Post("/logout", authController.Logout)
-		r.Post("/refresh", tokensController.Refresh)
+		r.Post("/register", h.Auth.Register)
+		r.Post("/login", h.Auth.Login)
+		r.Post("/logout", h.Auth.Logout)
+		r.Post("/refresh", h.Tokens.Refresh)
 
 		// Protected routes
-
 		r.Group(func(r chi.Router) {
-			r.Use(authMiddleware.ValidateToken)
+			r.Use(h.AuthMiddleware)
 
 			// User profile
-			r.Get("/me", userInfoController.GetUserInfo)
+			r.Get("/me", h.UserInfo.GetUserInfo)
 
 			// Admin: user management
 			r.Route("/users", func(r chi.Router) {
-				r.Get("/", userInfoController.GetUsers)
-				r.Put("/{id}", userInfoController.UpdateUser)
-				r.Delete("/{id}", userInfoController.DeleteUser)
+				r.Get("/", h.UserInfo.GetUsers)
+				r.Put("/{id}", h.UserInfo.UpdateUser)
+				r.Delete("/{id}", h.UserInfo.DeleteUser)
 			})
 
 			// Games
 			r.Route("/games", func(r chi.Router) {
-				r.Get("/", gameController.GetAll)
-				r.Get("/search", gameController.SearchAllGames)
-				r.Post("/", gameController.Create)
-				r.Post("/twitch", igdbGameController.CreateMultiGamesIGDB)
+				r.Get("/", h.Game.GetAll)
+				r.Get("/search", h.Game.SearchAllGames)
+				r.Post("/", h.Game.Create)
+				r.Post("/twitch", h.IGDBGame.CreateMultiGamesIGDB)
 
 				// Current user's game list
-				r.Get("/user", gameController.GetUserGames)
-				r.Get("/user/stats", gameController.GetGameStats)
+				r.Get("/user", h.Game.GetUserGames)
+				r.Get("/user/stats", h.Game.GetGameStats)
 
 				r.Route("/{id}", func(r chi.Router) {
-					r.Get("/", gameController.GetByID)
-					r.Get("/user-game", gameController.GetUserGame)
-					r.Post("/add", gameController.AddUserGame)
-					r.Put("/", gameController.Update)
-					r.Put("/status", gameController.UpdateStatus)
-					r.Put("/priority", gameController.UpdatePriority)
-					r.Delete("/", gameController.Delete)
-					r.Delete("/user-game", gameController.DeleteUserGame)
+					r.Get("/", h.Game.GetByID)
+					r.Get("/user-game", h.Game.GetUserGame)
+					r.Post("/add", h.Game.AddUserGame)
+					r.Put("/", h.Game.Update)
+					r.Put("/status", h.Game.UpdateStatus)
+					r.Put("/priority", h.Game.UpdatePriority)
+					r.Delete("/", h.Game.Delete)
+					r.Delete("/user-game", h.Game.DeleteUserGame)
 				})
-
 			})
 		})
 	})

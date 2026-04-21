@@ -58,18 +58,16 @@ func (r *GamesRepository) GetAllPaginated(ctx context.Context, userID int, param
 	if !ok {
 		sortField = "games.title"
 	}
-	if strings.ToLower(params.SortOrder) != "desc" {
-		params.SortOrder = "asc"
-	}
+	sortOrder := normalizeSortOrder(params.SortOrder)
 
 	baseQuery := `
 		FROM games
 		LEFT JOIN user_games ON user_games.game_id = games.id AND user_games.user_id = ?`
 	args := []any{userID}
 
-	if params.Search != "" {
-		baseQuery += " WHERE games.title LIKE ?"
-		args = append(args, "%"+params.Search+"%")
+	if ft := fulltextQuery(params.Search); ft != "" {
+		baseQuery += " WHERE MATCH(games.title) AGAINST(? IN BOOLEAN MODE)"
+		args = append(args, ft)
 	}
 
 	// count
@@ -88,7 +86,7 @@ func (r *GamesRepository) GetAllPaginated(ctx context.Context, userID int, param
 		%s
 		ORDER BY %s %s
 		LIMIT ? OFFSET ?`,
-		baseQuery, sortField, params.SortOrder,
+		baseQuery, sortField, sortOrder,
 	)
 	args = append(args, params.PageSize, offset)
 
@@ -154,9 +152,7 @@ func (r *GamesRepository) GetUserGames(ctx context.Context, userID int, params r
 	if !ok {
 		sortField = "games.title"
 	}
-	if strings.ToLower(params.SortOrder) != "desc" {
-		params.SortOrder = "asc"
-	}
+	sortOrder := normalizeSortOrder(params.SortOrder)
 
 	baseQuery := `
 		FROM games
@@ -169,9 +165,9 @@ func (r *GamesRepository) GetUserGames(ctx context.Context, userID int, params r
 		baseQuery += " AND user_games.status = ?"
 		args = append(args, *params.Status)
 	}
-	if params.Search != "" {
-		baseQuery += " AND games.title LIKE ?"
-		args = append(args, "%"+params.Search+"%")
+	if ft := fulltextQuery(params.Search); ft != "" {
+		baseQuery += " AND MATCH(games.title) AGAINST(? IN BOOLEAN MODE)"
+		args = append(args, ft)
 	}
 
 	// count
@@ -191,7 +187,7 @@ func (r *GamesRepository) GetUserGames(ctx context.Context, userID int, params r
 		%s
 		ORDER BY %s %s
 		LIMIT ? OFFSET ?`,
-		baseQuery, sortField, params.SortOrder,
+		baseQuery, sortField, sortOrder,
 	)
 	args = append(args, params.PageSize, offset)
 
@@ -225,14 +221,22 @@ func (r *GamesRepository) GetUserGames(ctx context.Context, userID int, params r
 func (r *GamesRepository) SearchAllGames(ctx context.Context, query string) ([]models.Game, error) {
 	const op = "storage.mariadb.GamesRepository.SearchAllGames"
 
+	// FULLTEXT MATCH is O(log n) against the ft_games_title index; the old
+	// LIKE '%s%' required a full table scan. Empty/punctuation-only queries
+	// return nothing — there is no useful match for them.
+	ft := fulltextQuery(query)
+	if ft == "" {
+		return []models.Game{}, nil
+	}
+
 	q := `
 		SELECT id, title, preambula, image, developer, publisher, year, genre, creator, url, created_at, updated_at
 		FROM games
-		WHERE title LIKE ?
+		WHERE MATCH(title) AGAINST(? IN BOOLEAN MODE)
 		ORDER BY title ASC
 		LIMIT 20`
 
-	rows, err := r.db.QueryContext(ctx, q, "%"+query+"%")
+	rows, err := r.db.QueryContext(ctx, q, ft)
 	if err != nil {
 		return nil, fmt.Errorf("%s: %w", op, err)
 	}
@@ -435,11 +439,19 @@ func (r *GamesRepository) DeleteUserGame(ctx context.Context, userID, gameID int
 // HELPERS
 // ============================================================================
 
+// MySQL server error codes we classify. See:
+// https://dev.mysql.com/doc/mysql-errors/8.0/en/server-error-reference.html
+const (
+	// mysqlErrDupEntry (ER_DUP_ENTRY) is raised when an INSERT/UPDATE would
+	// violate a UNIQUE or PRIMARY KEY constraint.
+	mysqlErrDupEntry = 1062
+)
+
 // wrapMySQLErr translate known MySQL-errors to repository sentitel-errors
 // All other errors are wrapped via fmt.Errorf
 func wrapMySQLErr(op string, err error) error {
 	var mySQLErr *mysql.MySQLError
-	if errors.As(err, &mySQLErr) && mySQLErr.Number == 1062 {
+	if errors.As(err, &mySQLErr) && mySQLErr.Number == mysqlErrDupEntry {
 		return fmt.Errorf("%s: %w", op, repository.ErrAlreadyExists)
 	}
 	return fmt.Errorf("%s: %w", op, err)
@@ -453,6 +465,47 @@ func wrapNotFound(op string, err error) error {
 	}
 
 	return fmt.Errorf("%s: %w", op, err)
+}
+
+// fulltextQuery sanitises a user-supplied search string for use inside a
+// MATCH(title) AGAINST(? IN BOOLEAN MODE) clause, then appends a trailing '*'
+// so the final token matches as a prefix. Characters reserved by the boolean
+// parser (+ - > < ( ) ~ * " @) are stripped: the caller's input is search
+// content, not query syntax.
+//
+// Returns an empty string for effectively empty input — callers should skip
+// the MATCH clause entirely in that case, since AGAINST('') would match
+// nothing and produce a surprising empty result set.
+func fulltextQuery(s string) string {
+	var b strings.Builder
+	b.Grow(len(s) + 1)
+	for _, r := range s {
+		switch r {
+		case '+', '-', '>', '<', '(', ')', '~', '*', '"', '@':
+			continue
+		}
+		if r < 0x20 { // control chars
+			continue
+		}
+		b.WriteRune(r)
+	}
+	trimmed := strings.TrimSpace(b.String())
+	if trimmed == "" {
+		return ""
+	}
+	return trimmed + "*"
+}
+
+// normalizeSortOrder whitelists "asc"/"desc" for interpolation into the SQL
+// ORDER BY clause. Both Go identifiers in the query string are controlled by
+// this function and the sortField whitelist — the rest of the statement uses
+// parameter binding, so this is defense in depth against accidental future
+// drift (e.g. if the service layer ever forgets to clamp the value).
+func normalizeSortOrder(s string) string {
+	if strings.EqualFold(s, "desc") {
+		return "desc"
+	}
+	return "asc"
 }
 
 func checkRowsAffected(op string, result sql.Result) error {

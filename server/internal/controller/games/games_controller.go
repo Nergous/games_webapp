@@ -3,7 +3,6 @@ package games
 
 import (
 	"context"
-	"encoding/json"
 	"io"
 	"log/slog"
 	"net/http"
@@ -19,7 +18,10 @@ import (
 	"github.com/go-chi/chi/v5"
 )
 
-const maxUploadSize = 10 << 20 // 10 MiB
+// defaultMaxUploadBytes is the fallback cap used when NewGameController is
+// called with a non-positive value (tests, defensive code). Production wires
+// the real limit from config.Uploads.MaxUploadBytes.
+const defaultMaxUploadBytes int64 = 10 << 20 // 10 MiB
 
 // gameService is the subset of the application's game service that the CRUD
 // controller depends on. Declared in the consumer package (Go idiom: accept
@@ -54,32 +56,37 @@ type IUploadsGames interface {
 }
 
 type GameController struct {
-	service gameService
-	log     *slog.Logger
-	uploads IUploadsGames
+	service        gameService
+	log            *slog.Logger
+	uploads        IUploadsGames
+	maxUploadBytes int64
 }
 
-func NewGameController(s gameService, log *slog.Logger, u IUploadsGames) *GameController {
+// NewGameController wires the controller. maxUploadBytes caps incoming
+// multipart uploads; pass 0 to use defaultMaxUploadBytes (handy in tests).
+func NewGameController(s gameService, log *slog.Logger, u IUploadsGames, maxUploadBytes int64) *GameController {
+	if maxUploadBytes <= 0 {
+		maxUploadBytes = defaultMaxUploadBytes
+	}
 	return &GameController{
-		service: s,
-		log:     log,
-		uploads: u,
+		service:        s,
+		log:            log,
+		uploads:        u,
+		maxUploadBytes: maxUploadBytes,
 	}
 }
 
 func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.PublicGamesController.GetByID"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	res, err := c.service.GetByID(r.Context(), int(gameID))
+	res, err := c.service.GetByID(r.Context(), gameID)
 	if err != nil {
 		controller.WriteError(w, log, err)
 		return
@@ -90,7 +97,7 @@ func (c *GameController) GetByID(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.PublicGamesController.GetAll"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -116,17 +123,9 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var totalPages int
-	if params.PageSize > 0 {
-		totalPages = (total / params.PageSize)
-		if total%params.PageSize != 0 {
-			totalPages++
-		}
-	}
-
 	controller.WriteJSON(w, log, http.StatusOK, controller.PaginationResponse{
 		Total:   total,
-		Pages:   totalPages,
+		Pages:   paginationPages(total, params.PageSize),
 		Current: params.Page,
 		Size:    params.PageSize,
 		Data:    games,
@@ -135,7 +134,7 @@ func (c *GameController) GetAll(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) SearchAllGames(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.PublicGamesController.SearchAllGames"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	query := r.URL.Query().Get("title")
 
@@ -150,7 +149,7 @@ func (c *GameController) SearchAllGames(w http.ResponseWriter, r *http.Request) 
 
 func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.GetUserGame"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -158,15 +157,13 @@ func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	result, err := c.service.GetUserGame(r.Context(), userID, int(gameID))
+	result, err := c.service.GetUserGame(r.Context(), userID, gameID)
 	if err != nil {
 		controller.WriteError(w, log, err)
 		return
@@ -177,7 +174,7 @@ func (c *GameController) GetUserGame(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.GetUserGames"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -210,14 +207,9 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	totalPages := total / params.PageSize
-	if total%params.PageSize != 0 {
-		totalPages++
-	}
-
 	controller.WriteJSON(w, log, http.StatusOK, controller.PaginationResponse{
 		Total:   total,
-		Pages:   totalPages,
+		Pages:   paginationPages(total, params.PageSize),
 		Current: params.Page,
 		Size:    params.PageSize,
 		Data:    games,
@@ -226,7 +218,7 @@ func (c *GameController) GetUserGames(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.GetGameStats"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -245,7 +237,7 @@ func (c *GameController) GetGameStats(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.games.Create"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -253,19 +245,17 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	if err := r.ParseMultipartForm(c.maxUploadBytes); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 		controller.WriteError(w, log, se)
 		return
 	}
 
-	// парсинг priority — если не число, дефолт 0
 	priority, err := strconv.Atoi(r.FormValue("priority"))
 	if err != nil {
 		priority = 0
 	}
 
-	// парсинг изображения
 	file, header, err := r.FormFile("image")
 	if err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidImage, err)
@@ -283,8 +273,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 
 	imageFilename := c.uploads.GenerateImageFilename(header.Filename, header.Header.Get("Content-Type"))
 	if err := c.uploads.SaveImage(imageData, imageFilename); err != nil {
-		se := g_errors.Wrap(op, g_errors.CodeInternal, "", err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
@@ -320,7 +309,7 @@ func (c *GameController) Create(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) AddUserGame(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.AddUserGame"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -328,15 +317,13 @@ func (c *GameController) AddUserGame(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	if err := c.service.AddUserGame(r.Context(), userID, int(gameID)); err != nil {
+	if err := c.service.AddUserGame(r.Context(), userID, gameID); err != nil {
 		controller.WriteError(w, log, err)
 		return
 	}
@@ -362,7 +349,7 @@ type gameUpdateFields struct {
 
 func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.games.Update"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -388,7 +375,7 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	fields, err := c.parseUpdateRequest(r, existingGame, op)
+	fields, err := c.parseUpdateRequest(w, r, existingGame, op)
 	if err != nil {
 		controller.WriteError(w, log, err)
 		return
@@ -426,13 +413,13 @@ func (c *GameController) Update(w http.ResponseWriter, r *http.Request) {
 }
 
 // parseUpdateRequest dispatches to the appropriate parser by Content-Type.
-func (c *GameController) parseUpdateRequest(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
+func (c *GameController) parseUpdateRequest(w http.ResponseWriter, r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
 	contentType := r.Header.Get("Content-Type")
 	switch {
 	case strings.HasPrefix(contentType, "multipart/form-data"):
 		return c.parseMultipartUpdate(r, existing, op)
 	case strings.HasPrefix(contentType, "application/json"):
-		return parseJSONUpdate(r, existing, op)
+		return parseJSONUpdate(w, r, existing, op)
 	default:
 		return gameUpdateFields{}, g_errors.New(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm)
 	}
@@ -442,7 +429,7 @@ func (c *GameController) parseUpdateRequest(r *http.Request, existing *models.Ga
 // image is supplied, it replaces the existing one on disk; otherwise the
 // existing image filename is preserved.
 func (c *GameController) parseMultipartUpdate(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
-	if err := r.ParseMultipartForm(maxUploadSize); err != nil {
+	if err := r.ParseMultipartForm(c.maxUploadBytes); err != nil {
 		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 	}
 
@@ -477,7 +464,7 @@ func (c *GameController) parseMultipartUpdate(r *http.Request, existing *models.
 
 	newName := c.uploads.GenerateImageFilename(header.Filename, header.Header.Get("Content-Type"))
 	if err := c.uploads.ReplaceImage(imageData, existing.Image, newName); err != nil {
-		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
+		return gameUpdateFields{}, err
 	}
 	fields.Image = newName
 	return fields, nil
@@ -490,9 +477,9 @@ func (c *GameController) parseMultipartUpdate(r *http.Request, existing *models.
 //
 // Requires at least one known field in the body — an empty payload is a
 // no-op and almost always a client bug.
-func parseJSONUpdate(r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
+func parseJSONUpdate(w http.ResponseWriter, r *http.Request, existing *models.Game, op string) (gameUpdateFields, error) {
 	var body map[string]any
-	if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+	if err := controller.DecodeJSON(w, r, &body); err != nil {
 		return gameUpdateFields{}, g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 	}
 
@@ -552,13 +539,24 @@ func parseGameID(r *http.Request, op string) (int, error) {
 	return int(id), nil
 }
 
+// paginationPages returns the total number of pages for a paginated query.
+// Returns 0 when pageSize is non-positive, guarding against a division-by-zero
+// panic on unsanitized input (the service layer clamps pageSize, but the
+// controller reads it back and should be robust in isolation).
+func paginationPages(total, pageSize int) int {
+	if pageSize <= 0 {
+		return 0
+	}
+	return (total + pageSize - 1) / pageSize
+}
+
 type UpdatePriorityRequest struct {
 	Priority int `json:"priority"`
 }
 
 func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.UpdatePriority"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -566,22 +564,20 @@ func (c *GameController) UpdatePriority(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	var req UpdatePriorityRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := controller.DecodeJSON(w, r, &req); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 		controller.WriteError(w, log, se)
 		return
 	}
 
-	if err := c.service.UpdatePriority(r.Context(), userID, int(gameID), req.Priority); err != nil {
+	if err := c.service.UpdatePriority(r.Context(), userID, gameID, req.Priority); err != nil {
 		controller.WriteError(w, log, err)
 		return
 	}
@@ -595,7 +591,7 @@ type UpdateStatusRequest struct {
 
 func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.UpdateStatus"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -603,22 +599,20 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
 	var req UpdateStatusRequest
-	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+	if err := controller.DecodeJSON(w, r, &req); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 		controller.WriteError(w, log, se)
 		return
 	}
 
-	if err := c.service.UpdateStatus(r.Context(), userID, int(gameID), models.GameStatus(req.Status)); err != nil {
+	if err := c.service.UpdateStatus(r.Context(), userID, gameID, models.GameStatus(req.Status)); err != nil {
 		controller.WriteError(w, log, err)
 		return
 	}
@@ -628,7 +622,7 @@ func (c *GameController) UpdateStatus(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.Delete"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -636,16 +630,13 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID,
-			map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	game, err := c.service.GetByID(r.Context(), int(gameID))
+	game, err := c.service.GetByID(r.Context(), gameID)
 	if err != nil {
 		controller.WriteError(w, log, err)
 		return
@@ -659,15 +650,19 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if err := c.uploads.DeleteImage(game.Image); err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDeleteFile, map[string]any{"image": game.Image}, err)
-		controller.WriteError(w, log, se)
+	// Delete the DB row first: if the DB fails, the image stays and the row
+	// stays — we can retry. Deleting the image first would risk leaving an
+	// orphan DB row pointing at a missing file when the DB delete fails.
+	// Image cleanup is best-effort: a stale file is cheaper than a stale row.
+	if err := c.service.Delete(r.Context(), gameID); err != nil {
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	if err := c.service.Delete(r.Context(), int(gameID)); err != nil {
-		controller.WriteError(w, log, err)
-		return
+	if err := c.uploads.DeleteImage(game.Image); err != nil {
+		log.Warn("image cleanup after delete failed",
+			slog.String("image", game.Image),
+			slog.Any("error", err))
 	}
 
 	w.WriteHeader(http.StatusNoContent)
@@ -675,7 +670,7 @@ func (c *GameController) Delete(w http.ResponseWriter, r *http.Request) {
 
 func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.GameController.DeleteUserGame"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -683,15 +678,13 @@ func (c *GameController) DeleteUserGame(w http.ResponseWriter, r *http.Request) 
 		return
 	}
 
-	gameIDStr := chi.URLParam(r, "id")
-	gameID, err := strconv.ParseInt(gameIDStr, 10, 64)
+	gameID, err := parseGameID(r, op)
 	if err != nil {
-		se := g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidGameID, map[string]any{"id": gameIDStr}, err)
-		controller.WriteError(w, log, se)
+		controller.WriteError(w, log, err)
 		return
 	}
 
-	if err := c.service.DeleteUserGame(r.Context(), userID, int(gameID)); err != nil {
+	if err := c.service.DeleteUserGame(r.Context(), userID, gameID); err != nil {
 		controller.WriteError(w, log, err)
 		return
 	}

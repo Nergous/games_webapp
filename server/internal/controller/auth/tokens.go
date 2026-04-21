@@ -34,7 +34,7 @@ type RefreshResponse struct {
 
 func (c *TokensController) Refresh(w http.ResponseWriter, r *http.Request) {
 	const op = "controllers.auth.Refresh"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	refreshCookie, err := r.Cookie(refreshTokenCookieName)
 	if err != nil {

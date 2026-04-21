@@ -8,24 +8,35 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/sync/errgroup"
+
 	igdbclient "games_webapp/internal/client/igdb"
 	g_errors "games_webapp/internal/errors"
 	"games_webapp/internal/models"
 	"games_webapp/internal/service"
 )
 
+// Defaults applied when IGDBSettings aren't supplied (tests, zero-valued
+// config). Production wires real values from config.IGDB via
+// GameService.SetIGDBSettings at composition time.
 const (
-	// maxIGDBWorkers bounds outbound IGDB concurrency per batch.
-	maxIGDBWorkers = 10
+	defaultIGDBWorkers      = 10
+	defaultIGDBBatchTimeout = 30 * time.Second
 
-	// MaxGamesPerRequest is the hard cap on a single batch. Exported so the
-	// HTTP layer can reject oversized payloads before any work starts.
+	// MaxGamesPerRequest is the public default hard cap on a single batch.
+	// Kept exported for the HTTP layer and tests; runtime override lives on
+	// GameService.maxGames (set via SetIGDBSettings).
 	MaxGamesPerRequest = 100
-
-	// igdbBatchTimeout bounds the total wall-clock time for one batch import.
-	// Graceful shutdown in cmd/games/main.go must outlast this value.
-	igdbBatchTimeout = 30 * time.Second
 )
+
+// IGDBSettings carries tunables for BatchImportFromIGDB. Passed through
+// GameService.SetIGDBSettings so the service has no import on the config
+// package and stays testable in isolation.
+type IGDBSettings struct {
+	MaxWorkers         int
+	MaxGamesPerRequest int
+	BatchTimeout       time.Duration
+}
 
 // IGDBFetcher is the subset of the IGDB client that BatchImportFromIGDB
 // depends on. Declared in the consumer package so it can be swapped in tests.
@@ -43,8 +54,8 @@ type ImageDownloader interface {
 
 // BatchImportFromIGDB fetches game metadata and covers from IGDB for each
 // request and persists both the Game and the user_games row. Requests are
-// processed concurrently (bounded by maxIGDBWorkers) and partial failures are
-// returned via ImportResult.Errors rather than aborting the batch.
+// processed concurrently (bounded by s.maxWorkers via errgroup) and partial
+// failures are returned via ImportResult.Errors rather than aborting the batch.
 //
 // The returned error is non-nil only for failures that prevent the batch from
 // running at all (invalid input, IGDB token fetch failure); per-item failures
@@ -62,7 +73,7 @@ func (s *GameService) BatchImportFromIGDB(
 	if len(requests) == 0 {
 		return nil, g_errors.New(op, g_errors.CodeInvalidInput, g_errors.EmptyQuery)
 	}
-	if len(requests) > MaxGamesPerRequest {
+	if len(requests) > s.maxGames {
 		return nil, g_errors.New(op, g_errors.CodeInvalidInput, g_errors.TooMuchGamesInRequest)
 	}
 	for _, req := range requests {
@@ -80,52 +91,38 @@ func (s *GameService) BatchImportFromIGDB(
 		return nil, err
 	}
 
-	batchCtx, cancel := context.WithTimeout(ctx, igdbBatchTimeout)
+	batchCtx, cancel := context.WithTimeout(ctx, s.batchTimeout)
 	defer cancel()
-
-	// Buffers sized to the batch: drainers run only after wg.Wait (see close
-	// goroutine below), so a smaller buffer would deadlock workers mid-send.
-	var (
-		sem         = make(chan struct{}, maxIGDBWorkers)
-		wg          sync.WaitGroup
-		errChan     = make(chan service.ImportError, len(requests))
-		resultsChan = make(chan *models.Game, len(requests))
-	)
-
-	for _, r := range requests {
-		sem <- struct{}{}
-		wg.Add(1)
-		go func(req service.ImportGameRequest) {
-			defer func() {
-				<-sem
-				wg.Done()
-			}()
-
-			game, err := s.importOne(batchCtx, req, userID)
-			if err != nil {
-				errChan <- toImportError(req, err)
-				return
-			}
-			resultsChan <- game
-		}(r)
-	}
-
-	go func() {
-		wg.Wait()
-		close(errChan)
-		close(resultsChan)
-	}()
 
 	result := &service.ImportResult{
 		Success: make([]*models.Game, 0, len(requests)),
 		Errors:  make([]service.ImportError, 0, len(requests)),
 	}
-	for e := range errChan {
-		result.Errors = append(result.Errors, e)
+	var mu sync.Mutex
+
+	// errgroup.SetLimit honours batchCtx cancellation inside Go(), so an
+	// in-flight shutdown aborts pending work instead of blocking on a full
+	// semaphore. importOne errors are folded into result.Errors; fatal
+	// programming errors (should be none here) would bubble up via Wait.
+	g, gCtx := errgroup.WithContext(batchCtx)
+	g.SetLimit(s.maxWorkers)
+
+	for _, r := range requests {
+		req := r
+		g.Go(func() error {
+			game, err := s.importOne(gCtx, req, userID)
+			mu.Lock()
+			defer mu.Unlock()
+			if err != nil {
+				result.Errors = append(result.Errors, toImportError(req, err))
+				return nil
+			}
+			result.Success = append(result.Success, game)
+			return nil
+		})
 	}
-	for g := range resultsChan {
-		result.Success = append(result.Success, g)
-	}
+	_ = g.Wait()
+
 	return result, nil
 }
 
@@ -142,12 +139,12 @@ func (s *GameService) importOne(ctx context.Context, req service.ImportGameReque
 
 	var slug string
 	if req.URL != "" {
-		s, err := igdbclient.ExtractSlug(req.URL)
+		extracted, err := igdbclient.ExtractSlug(req.URL)
 		if err != nil {
 			return nil, g_errors.WrapWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidURL,
 				map[string]any{"url": req.URL}, err)
 		}
-		slug = s
+		slug = extracted
 	}
 
 	info, err := s.igdb.GetGame(ctx, req.Name, slug)

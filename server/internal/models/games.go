@@ -26,14 +26,3 @@ type UserGameResponse struct {
 	Priority int        `json:"priority"`
 	Status   GameStatus `json:"status"`
 }
-
-type WhereQuery struct {
-	Field     string `json:"field"`
-	Condition string `json:"condition"`
-	Value     string `json:"value"`
-}
-
-type Sort struct {
-	Field     string `json:"field"`
-	Direction string `json:"direction"`
-}

@@ -5,7 +5,6 @@ import (
 	"context"
 	"crypto/sha256"
 	"fmt"
-	g_errors "games_webapp/internal/errors"
 	"io"
 	"net/http"
 	"os"
@@ -13,103 +12,103 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	g_errors "games_webapp/internal/errors"
 )
 
 // ============================================================================
 // TYPES
 // ============================================================================
 
+// defaultDownloadTimeout is used when NewUploads is called with a zero value
+// (tests, ad-hoc callers). Production wires the real timeout from config.
+const defaultDownloadTimeout = 5 * time.Second
+
 // Uploads manages file operations for user-uploaded images.
 //
 // It provides thread-safe operations for saving, deleting, replacing, and
-// downloading images to/from a designated folder on the filesystem. The
-// structure handles image validation, filename generation, and ensures
-// data integrity through mutex-based synchronization.
+// downloading images to/from a designated folder on the filesystem.
 type Uploads struct {
 	// folderPath is the absolute or relative path to the directory where
-	// uploaded images are stored. It always ends with a path separator.
+	// uploaded images are stored. Always normalized via filepath.Clean and
+	// ends with a path separator (required for safeJoin's prefix check).
 	folderPath string
 
-	// mu protects concurrent access to filesystem operations, preventing
-	// race conditions during read/write operations on the same file.
-	mu sync.RWMutex
+	// cleanRoot is folderPath without the trailing separator, cached for the
+	// prefix comparison in safeJoin.
+	cleanRoot string
+
+	// mu serialises filesystem operations so Save / Delete / Replace on the
+	// same filename cannot race. All operations are exclusive — a RWMutex
+	// would pretend reads exist when they don't.
+	mu sync.Mutex
+
+	// httpClient is reused across all downloads so connections are pooled
+	// instead of the keep-alive cache being thrown away per call.
+	httpClient *http.Client
 }
 
 // ============================================================================
 // INITIALIZATION
 // ============================================================================
 
-// NewUploads creates and initializes a new Uploads instance.
-//
-// It validates the provided folder path, normalizes it by cleaning and
-// appending a trailing separator, and ensures the target directory exists
-// on the filesystem. If the directory doesn't exist, it attempts to create it.
-//
-// Input parameters:
-//   - folderPath: path to the directory where uploaded images will be stored; can be absolute or relative path, empty path is not allowed
-//
-// Output parameters:
-//   - *Uploads: initialized Uploads instance with synchronized access control
-//   - error: nil on success, or an error if folderPath is empty or directory creation fails (permission issues, invalid path)
-func NewUploads(folderPath string) (*Uploads, error) {
+// NewUploads creates and initializes a new Uploads instance. downloadTimeout
+// bounds a single cover download; pass 0 to fall back to defaultDownloadTimeout.
+func NewUploads(folderPath string, downloadTimeout time.Duration) (*Uploads, error) {
 	const op = "storage.NewUploads"
 	if folderPath == "" {
-		return nil, g_errors.NewWithInfo(
-			op,
-			g_errors.CodeInternal,
-			"",
-			map[string]any{
-				"info": g_errors.EmptyFolderPath,
-			},
-		)
+		return nil, g_errors.NewWithInfo(op, g_errors.CodeInternal, "",
+			map[string]any{"info": g_errors.EmptyFolderPath})
+	}
+	if downloadTimeout <= 0 {
+		downloadTimeout = defaultDownloadTimeout
 	}
 
-	folderPath = filepath.Clean(folderPath) + string(filepath.Separator)
-
-	u := &Uploads{folderPath: folderPath, mu: sync.RWMutex{}}
+	cleanRoot := filepath.Clean(folderPath)
+	u := &Uploads{
+		folderPath: cleanRoot + string(filepath.Separator),
+		cleanRoot:  cleanRoot,
+		httpClient: &http.Client{Timeout: downloadTimeout},
+	}
 
 	if err := u.ensureFolderExists(); err != nil {
-		return nil, g_errors.Wrap(
-			op,
-			g_errors.CodeInternal,
-			"",
-			err,
-		)
+		return nil, g_errors.Wrap(op, g_errors.CodeInternal, "", err)
 	}
 
 	return u, nil
 }
 
 // ============================================================================
-// SETTERS
-// ============================================================================
-
-// SetFolderPath updates the uploads directory path.
-//
-// Note: This method does not validate the new path or create the directory.
-// The caller should ensure the new path is valid and accessible before
-// performing file operations.
-//
-// Input parameters:
-//   - folderPath: new path for the uploads directory
-func (u *Uploads) SetFolderPath(folderPath string) { u.folderPath = folderPath }
-
-// ============================================================================
 // METHODS
 // ============================================================================
 
+// safeJoin returns an absolute filesystem path for `filename` rooted at
+// u.folderPath, rejecting any filename that would escape the uploads directory
+// (e.g. "../../etc/passwd"). The filename must be a simple file — no
+// separators and no parent references — otherwise CodeInvalidInput is returned.
+func (u *Uploads) safeJoin(op, filename string) (string, error) {
+	if filename == "" {
+		return "", g_errors.New(op, g_errors.CodeInvalidInput, g_errors.EmptyFileName)
+	}
+	// Reject separators and traversal outright: GenerateImageFilename never
+	// produces them, and any caller that sneaks one in is almost certainly
+	// attacker input.
+	if strings.ContainsAny(filename, `/\`) || filename == "." || filename == ".." {
+		return "", g_errors.NewWithInfo(op, g_errors.CodeInvalidInput, g_errors.EmptyFileName,
+			map[string]any{"filename": filename})
+	}
+	full := filepath.Clean(filepath.Join(u.folderPath, filename))
+	// Defense in depth: verify the cleaned path still lives inside the
+	// uploads root. Covers exotic cases (Unicode normalization, odd Windows
+	// prefixes) the string check above might not catch.
+	if full != filepath.Join(u.cleanRoot, filename) {
+		return "", g_errors.NewWithInfo(op, g_errors.CodeInvalidInput, g_errors.EmptyFileName,
+			map[string]any{"filename": filename})
+	}
+	return full, nil
+}
+
 // SaveImage writes an image to the filesystem with the specified filename.
-//
-// It performs validation on input parameters, checks for existing files to
-// prevent overwrites, and ensures thread-safe file creation. The operation
-// is atomic: if writing fails, any partially created file is removed.
-//
-// Input parameters:
-//   - image: byte slice containing the image data; must not be empty
-//   - filename: name of the file to create (without path); must not be empty
-//
-// Output parameters:
-//   - error: nil on success, or an error if image data is empty, filename is empty, file already exists, file creation fails, or writing to file fails
 func (u *Uploads) SaveImage(image []byte, filename string) error {
 	const op = "storage.Uploads.SaveImage"
 
@@ -117,164 +116,87 @@ func (u *Uploads) SaveImage(image []byte, filename string) error {
 		return g_errors.New(op, g_errors.CodeInvalidInput, g_errors.NullImageLength)
 	}
 
-	if filename == "" {
-		return g_errors.New(op, g_errors.CodeInvalidInput, g_errors.EmptyFileName)
+	fullPath, err := u.safeJoin(op, filename)
+	if err != nil {
+		return err
 	}
-
-	fullPath := filepath.Join(u.folderPath, filename)
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
 	if _, err := os.Stat(fullPath); err == nil {
-		return g_errors.NewWithInfo(
-			op,
-			g_errors.CodeInternal,
-			g_errors.FileAlreadyExists,
-			map[string]any{
-				"fullPath": fullPath,
-			},
-		)
+		// Existing file = client conflict, not server fault: map to 409.
+		return g_errors.NewWithInfo(op, g_errors.CodeConflict, g_errors.FileAlreadyExists,
+			map[string]any{"fullPath": fullPath})
 	}
 
 	file, err := os.Create(fullPath)
 	if err != nil {
-		return g_errors.Wrap(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotCreateFile,
-			err,
-		)
+		return g_errors.Wrap(op, g_errors.CodeInternal, g_errors.CannotCreateFile, err)
 	}
 	defer file.Close()
 	if _, err := file.Write(image); err != nil {
 		_ = os.Remove(fullPath)
-		return g_errors.Wrap(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotWriteFile,
-			err,
-		)
+		return g_errors.Wrap(op, g_errors.CodeInternal, g_errors.CannotWriteFile, err)
 	}
 
 	return nil
 }
 
 // DeleteImage removes an image file from the filesystem.
-//
-// It validates the filename, checks if the file exists, and performs
-// thread-safe deletion. The operation distinguishes between "file not found"
-// and other filesystem errors for proper error handling.
-//
-// Input parameters:
-//   - filename: name of the file to delete (without path); must not be empty
-//
-// Output parameters:
-//   - error: nil on success, or an error if filename is empty, file doesn't exist (CodeNotFound), filesystem access fails, or deletion fails (permission issues, etc.)
 func (u *Uploads) DeleteImage(filename string) error {
 	const op = "storage.Uploads.DeleteImage"
 
-	if filename == "" {
-		return g_errors.New(op, g_errors.CodeInternal, g_errors.EmptyFileName)
+	fullPath, err := u.safeJoin(op, filename)
+	if err != nil {
+		return err
 	}
-
-	fullPath := filepath.Join(u.folderPath, filename)
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
-	_, err := os.Stat(fullPath)
-	if err != nil {
+	if _, err := os.Stat(fullPath); err != nil {
 		if os.IsNotExist(err) {
-			return g_errors.WrapWithInfo(
-				op,
-				g_errors.CodeNotFound,
-				g_errors.FileNotFound,
-				map[string]any{
-					"path": fullPath,
-				},
-				err,
-			)
-		} else {
-			return g_errors.WrapWithInfo(
-				op,
-				g_errors.CodeInternal,
-				g_errors.CannotDeleteFile,
-				map[string]any{
-					"path": fullPath,
-				},
-				err,
-			)
+			return g_errors.WrapWithInfo(op, g_errors.CodeNotFound, g_errors.FileNotFound,
+				map[string]any{"path": fullPath}, err)
 		}
+		return g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDeleteFile,
+			map[string]any{"path": fullPath}, err)
 	}
 
-	return os.Remove(fullPath)
+	if err := os.Remove(fullPath); err != nil {
+		return g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDeleteFile,
+			map[string]any{"path": fullPath}, err)
+	}
+	return nil
 }
 
 // ReplaceImage atomically replaces an existing image with new content and/or name.
-//
-// This method handles three scenarios: replace content but keep the same filename
-// (oldFilename == newFilename), replace content and rename file (oldFilename != newFilename),
-// or create new file (if old file doesn't exist and names differ).
-//
-// The operation uses a temporary file to ensure atomicity: the new file is
-// written completely before replacing the old one. If any step fails, the
-// temporary file is cleaned up and the original file remains untouched.
-//
-// Input parameters:
-//   - image: byte slice containing the new image data; must not be empty
-//   - oldFilename: name of the existing file to replace; must not be empty
-//   - newFilename: name for the new file; must not be empty
-//
-// Output parameters:
-//   - error: nil on success, or an error if image data is empty, either filename is empty, old file doesn't exist (when replacing with different name), temporary file creation fails, writing to temporary file fails, renaming temporary file fails, or deletion of old file fails (when names differ)
 func (u *Uploads) ReplaceImage(image []byte, oldFilename, newFilename string) error {
 	const op = "storage.Uploads.ReplaceImage"
 
 	if len(image) == 0 {
-		return g_errors.New(op, g_errors.CodeInternal, g_errors.NullImageLength)
+		return g_errors.New(op, g_errors.CodeInvalidInput, g_errors.NullImageLength)
 	}
 
-	if oldFilename == "" || newFilename == "" {
-		return g_errors.NewWithInfo(
-			op,
-			g_errors.CodeInternal,
-			g_errors.EmptyFileName,
-			map[string]any{
-				"oldfilename": oldFilename,
-				"newfilename": newFilename,
-			},
-		)
+	oldPath, err := u.safeJoin(op, oldFilename)
+	if err != nil {
+		return err
 	}
-
-	oldPath := filepath.Join(u.folderPath, oldFilename)
-	newPath := filepath.Join(u.folderPath, newFilename)
+	newPath, err := u.safeJoin(op, newFilename)
+	if err != nil {
+		return err
+	}
 
 	u.mu.Lock()
 	defer u.mu.Unlock()
 
 	if _, err := os.Stat(oldPath); oldFilename != newFilename && os.IsNotExist(err) {
-		return g_errors.WrapWithInfo(
-			op,
-			g_errors.CodeNotFound,
-			g_errors.FileNotFound,
-			map[string]any{
-				"oldfilename": oldFilename,
-				"newfilename": newFilename,
-			},
-			err,
-		)
-	} else if err != nil {
-		return g_errors.WrapWithInfo(
-			op,
-			g_errors.CodeInternal,
-			g_errors.FileNotFound,
-			map[string]any{
-				"oldfilename": oldFilename,
-				"newfilename": newFilename,
-			},
-			err,
-		)
+		return g_errors.WrapWithInfo(op, g_errors.CodeNotFound, g_errors.FileNotFound,
+			map[string]any{"oldfilename": oldFilename, "newfilename": newFilename}, err)
+	} else if err != nil && !os.IsNotExist(err) {
+		return g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.FileNotFound,
+			map[string]any{"oldfilename": oldFilename, "newfilename": newFilename}, err)
 	}
 
 	if err := atomicWriteFile(newPath, image); err != nil {
@@ -282,26 +204,9 @@ func (u *Uploads) ReplaceImage(image []byte, oldFilename, newFilename string) er
 	}
 
 	if oldFilename != newFilename {
-		if err := os.Remove(oldPath); err != nil && os.IsNotExist(err) {
-			return g_errors.WrapWithInfo(
-				op,
-				g_errors.CodeNotFound,
-				g_errors.FileNotFound,
-				map[string]any{
-					"oldpath": oldPath,
-				},
-				err,
-			)
-		} else if err != nil {
-			return g_errors.WrapWithInfo(
-				op,
-				g_errors.CodeInternal,
-				g_errors.CannotDeleteFile,
-				map[string]any{
-					"oldpath": oldPath,
-				},
-				err,
-			)
+		if err := os.Remove(oldPath); err != nil && !os.IsNotExist(err) {
+			return g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDeleteFile,
+				map[string]any{"oldpath": oldPath}, err)
 		}
 	}
 
@@ -310,96 +215,76 @@ func (u *Uploads) ReplaceImage(image []byte, oldFilename, newFilename string) er
 
 // DownloadAndSaveImage fetches an image from a URL and saves it locally.
 //
-// The function performs HTTP GET request with a 5-second timeout, validates
-// the response (status code, content type), downloads the image data, and
-// saves it using SaveImage. The filename is automatically generated based
-// on the URL and content type.
-//
-// Input parameters:
-//   - url: HTTP/HTTPS URL pointing to an image; must not be empty
-//
-// Output parameters:
-//   - string: generated filename of the saved image on success
-//   - error: nil on success, or an error if URL is empty (CodeInvalidInput), HTTP request fails (timeout, network issues), response status is not 200 OK, Content-Type is not an image type (CodeInvalidInput), reading response body fails, or saving the image fails
+// The body streams into a unique temp file in the uploads directory WITHOUT
+// holding u.mu — a slow remote server must not block every other filesystem
+// operation (Slowloris-style DoS). Only the final conflict-check + rename is
+// serialised. Temp files are created via os.CreateTemp so concurrent workers
+// can download independently without colliding.
 func (u *Uploads) DownloadAndSaveImage(ctx context.Context, url string) (string, error) {
 	const op = "storage.Uploads.DownloadAndSaveImage"
 	if url == "" {
-		return "", g_errors.NewWithInfo(
-			op,
-			g_errors.CodeInvalidInput,
-			g_errors.InvalidImageURL,
-			map[string]any{
-				"url": url,
-			},
-		)
+		return "", g_errors.NewWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidImageURL,
+			map[string]any{"url": url})
 	}
 
-	client := &http.Client{Timeout: 5 * time.Second}
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
-		return "", g_errors.WrapWithInfo(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotDownloadImage,
-			map[string]any{"url": url},
-			err,
-		)
+		return "", g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDownloadImage,
+			map[string]any{"url": url}, err)
 	}
-	resp, err := client.Do(req)
+	resp, err := u.httpClient.Do(req)
 	if err != nil {
-		return "", g_errors.WrapWithInfo(
-			op,
-			g_errors.CodeInternal,
-			g_errors.CannotDownloadImage,
-			map[string]any{
-				"url": url,
-			},
-			err,
-		)
+		return "", g_errors.WrapWithInfo(op, g_errors.CodeInternal, g_errors.CannotDownloadImage,
+			map[string]any{"url": url}, err)
 	}
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return "", g_errors.NewWithInfo(
-			op,
-			g_errors.CodeInternal,
-			"",
-			map[string]any{
-				"respStatusCode": resp.StatusCode,
-			},
-		)
+		return "", g_errors.NewWithInfo(op, g_errors.CodeInternal, "",
+			map[string]any{"respStatusCode": resp.StatusCode})
 	}
 
 	contentType := resp.Header.Get("Content-Type")
 	if !strings.HasPrefix(contentType, "image/") {
-		return "", g_errors.NewWithInfo(
-			op,
-			g_errors.CodeInvalidInput,
-			g_errors.InvalidFileType,
-			map[string]any{
-				"info": g_errors.InvalidFileType,
-				"url":  url,
-				"type": contentType,
-			},
-		)
+		return "", g_errors.NewWithInfo(op, g_errors.CodeInvalidInput, g_errors.InvalidFileType,
+			map[string]any{"url": url, "type": contentType})
 	}
 
-	imageData, err := io.ReadAll(resp.Body)
-	if err != nil {
-		return "", g_errors.WrapWithInfo(
-			op,
-			g_errors.CodeInternal,
-			"",
-			map[string]any{
-				"url": url,
-			},
-			err,
-		)
-	}
 	filename := u.GenerateImageFilename(url, contentType)
-
-	if err := u.SaveImage(imageData, filename); err != nil {
+	fullPath, err := u.safeJoin(op, filename)
+	if err != nil {
 		return "", err
+	}
+
+	// Download into an anonymous temp file in the uploads dir — same
+	// filesystem as fullPath so the eventual rename is atomic.
+	tmp, err := os.CreateTemp(u.cleanRoot, "dl_*.part")
+	if err != nil {
+		return "", g_errors.Wrap(op, g_errors.CodeInternal, g_errors.CannotCreateFile, err)
+	}
+	tmpPath := tmp.Name()
+	if _, err := io.Copy(tmp, resp.Body); err != nil {
+		_ = tmp.Close()
+		_ = os.Remove(tmpPath)
+		return "", g_errors.Wrap(op, g_errors.CodeInternal, g_errors.CannotWriteFile, err)
+	}
+	if err := tmp.Close(); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", g_errors.Wrap(op, g_errors.CodeInternal, g_errors.CannotWriteFile, err)
+	}
+
+	u.mu.Lock()
+	defer u.mu.Unlock()
+
+	if _, err := os.Stat(fullPath); err == nil {
+		_ = os.Remove(tmpPath)
+		return "", g_errors.NewWithInfo(op, g_errors.CodeConflict, g_errors.FileAlreadyExists,
+			map[string]any{"fullPath": fullPath})
+	}
+
+	if err := os.Rename(tmpPath, fullPath); err != nil {
+		_ = os.Remove(tmpPath)
+		return "", g_errors.Wrap(op, g_errors.CodeInternal, g_errors.CannotWriteFile, err)
 	}
 
 	return filename, nil
@@ -409,24 +294,9 @@ func (u *Uploads) DownloadAndSaveImage(ctx context.Context, url string) (string,
 // HELPERS
 // ============================================================================
 
-// GenerateImageFilename creates a unique filename for an image based on its
-// source URL and content type.
-//
-// The filename is generated by determining the appropriate file extension
-// from Content-Type, creating a unique string combining timestamp and URL,
-// computing SHA-256 hash and taking first 8 bytes as hex string.
-//
-// This approach ensures uniqueness (different URLs or upload times produce
-// different names), determinism (same URL uploaded at same time produces
-// same name), and safety (no special characters that could cause filesystem
-// issues).
-//
-// Input parameters:
-//   - url: source URL of the image (used for hash generation)
-//   - contentType: HTTP Content-Type header (used for extension detection)
-//
-// Output parameters:
-//   - string: generated filename with appropriate extension (e.g., "a1b2c3d4.jpg")
+// GenerateImageFilename creates a unique filename from source URL and
+// content type. Output is `<8-byte hex>.<ext>` — no separators, safe for
+// safeJoin.
 func (u *Uploads) GenerateImageFilename(url, contentType string) string {
 	ext := ".jpg"
 	switch {
@@ -438,16 +308,13 @@ func (u *Uploads) GenerateImageFilename(url, contentType string) string {
 		ext = ".webp"
 	}
 
-	unique_string := time.Now().Format("20060102150405") + url
-
-	hash := sha256.Sum256([]byte(unique_string))
+	uniqueStr := time.Now().Format("20060102150405") + url
+	hash := sha256.Sum256([]byte(uniqueStr))
 	return fmt.Sprintf("%x%s", hash[:8], ext)
 }
 
 // atomicWriteFile writes data to a sibling ".tmp" file, closes it, then
 // renames into place — either the target is fully replaced or it's unchanged.
-// Any partially written .tmp is removed on error so the filesystem never
-// contains a half-formed artifact.
 func atomicWriteFile(path string, data []byte) error {
 	tempPath := path + ".tmp"
 	f, err := os.Create(tempPath)
@@ -470,15 +337,6 @@ func atomicWriteFile(path string, data []byte) error {
 	return nil
 }
 
-// ensureFolderExists verifies that the uploads directory exists and creates it
-// if necessary.
-//
-// This method is called during initialization and is thread-safe.
-// It creates the directory with 0755 permissions (owner: read/write/execute,
-// group/others: read/execute).
-//
-// Output parameters:
-//   - error: nil if directory exists or was created successfully, otherwise an error from os.MkdirAll
 func (u *Uploads) ensureFolderExists() error {
 	u.mu.Lock()
 	defer u.mu.Unlock()

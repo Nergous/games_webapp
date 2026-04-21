@@ -1,6 +1,6 @@
 module games_webapp
 
-go 1.24.0
+go 1.25.0
 
 require (
 	github.com/Nergous/sso_protos v0.0.0-20251106115144-68f440ba0ac5
@@ -9,6 +9,7 @@ require (
 	github.com/go-sql-driver/mysql v1.9.2
 	github.com/grpc-ecosystem/go-grpc-middleware/v2 v2.3.2
 	github.com/ilyakaznacheev/cleanenv v1.5.0
+	golang.org/x/sync v0.20.0
 	google.golang.org/grpc v1.75.1
 )
 

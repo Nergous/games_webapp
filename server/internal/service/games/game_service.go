@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"strings"
+	"time"
 
 	"games_webapp/internal/models"
 	"games_webapp/internal/repository"
@@ -41,16 +42,42 @@ type GameService struct {
 	repo    gamesRepo
 	igdb    IGDBFetcher     // optional; required only for BatchImportFromIGDB
 	uploads ImageDownloader // optional; required only for BatchImportFromIGDB
+
+	// IGDB batch-import tunables. Populated from defaults at construction,
+	// overridable via SetIGDBSettings. Kept on the service (not a global) so
+	// tests can exercise different worker counts independently.
+	maxWorkers   int
+	maxGames     int
+	batchTimeout time.Duration
 }
 
 // NewGameService wires a GameService. igdb and uploads may be nil if the
 // consumer never calls BatchImportFromIGDB (e.g. in unit tests that only
-// exercise CRUD).
+// exercise CRUD). IGDB tunables start at safe defaults; override via
+// SetIGDBSettings at composition time.
 func NewGameService(r gamesRepo, igdb IGDBFetcher, uploads ImageDownloader) *GameService {
 	return &GameService{
-		repo:    r,
-		igdb:    igdb,
-		uploads: uploads,
+		repo:         r,
+		igdb:         igdb,
+		uploads:      uploads,
+		maxWorkers:   defaultIGDBWorkers,
+		maxGames:     MaxGamesPerRequest,
+		batchTimeout: defaultIGDBBatchTimeout,
+	}
+}
+
+// SetIGDBSettings overrides the batch-import tunables. Non-positive fields
+// are ignored so callers can supply a partial override without wiping the
+// defaults for fields they don't care about.
+func (s *GameService) SetIGDBSettings(settings IGDBSettings) {
+	if settings.MaxWorkers > 0 {
+		s.maxWorkers = settings.MaxWorkers
+	}
+	if settings.MaxGamesPerRequest > 0 {
+		s.maxGames = settings.MaxGamesPerRequest
+	}
+	if settings.BatchTimeout > 0 {
+		s.batchTimeout = settings.BatchTimeout
 	}
 }
 

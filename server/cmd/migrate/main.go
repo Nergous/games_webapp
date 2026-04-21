@@ -59,9 +59,15 @@ func main() {
 		slog.String("dbname", cfg.Database.DBName),
 	)
 
+	// Any migration path can hang indefinitely against a stuck DB; bound
+	// the whole run so CI/CD fails fast instead of timing out at the pipeline
+	// level with no clean error.
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+
 	switch *cmd {
 	case cmdUp:
-		if err := storage.Migrate(); err != nil {
+		if err := storage.MigrateContext(ctx); err != nil {
 			log.Error("migration failed", slog.String("error", err.Error()))
 			os.Exit(1)
 		}
@@ -69,9 +75,6 @@ func main() {
 
 	case cmdRefresh:
 		log.Warn("running refresh — all data will be lost")
-
-		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
-		defer cancel()
 
 		if err := storage.MigrateRefresh(ctx); err != nil {
 			log.Error("refresh failed", slog.String("error", err.Error()))

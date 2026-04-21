@@ -7,6 +7,8 @@ import (
 	"net/http"
 	"strings"
 
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
+
 	"games_webapp/internal/client/sso/grpc"
 )
 
@@ -34,6 +36,13 @@ func UserIDFromContext(ctx context.Context) (int, bool) {
 
 func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		// Enrich logs with the chi request id so SSO failures here correlate
+		// with the handler logs further down the chain.
+		log := m.log
+		if id := chimiddleware.GetReqID(r.Context()); id != "" {
+			log = log.With(slog.String("request_id", id))
+		}
+
 		authHeader := r.Header.Get("Authorization")
 		if authHeader == "" || !strings.HasPrefix(authHeader, "Bearer ") {
 			http.Error(w, "Отсутствует или неправильный заголовок авторизации", http.StatusUnauthorized)
@@ -43,14 +52,22 @@ func (m *AuthMiddleware) ValidateToken(next http.Handler) http.Handler {
 		token := strings.TrimPrefix(authHeader, "Bearer ")
 
 		userID, valid, err := m.ssoClient.ValidateToken(r.Context(), token)
-		if err != nil || !valid {
+		if err != nil {
+			// Network/SSO-side failures would otherwise be silently coerced
+			// into "invalid token" 401s — log them so oncall can tell apart
+			// real auth rejections from SSO outages.
+			log.Error("ValidateToken failed", slog.Any("error", err))
+			http.Error(w, "Unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if !valid {
 			http.Error(w, "Unauthorized", http.StatusUnauthorized)
 			return
 		}
 
 		isAdmin, err := m.ssoClient.IsAdmin(r.Context(), userID, m.appID)
 		if err != nil {
-			m.log.Warn("IsAdmin check failed, defaulting to non-admin",
+			log.Warn("IsAdmin check failed, defaulting to non-admin",
 				slog.Any("userID", userID),
 				slog.Any("error", err))
 			isAdmin = false

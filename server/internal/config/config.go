@@ -40,9 +40,11 @@ type Config struct {
 	// Used to adjust logging verbosity and other environment-specific behavior.
 	Env string `yaml:"env" env:"ENV" env-required:"true"`
 
-	// UploadsPath is the file system path to the directory where
-	// uploaded game images are stored.
-	UploadsPath string `yaml:"uploads_path" env:"UPLOADS_PATH" env-required:"true"`
+	// Uploads holds filesystem-upload limits and timeouts.
+	Uploads UploadsConfig `yaml:"uploads"`
+
+	// IGDB holds batch-import tuning knobs for the IGDB integration.
+	IGDB IGDBConfig `yaml:"igdb"`
 
 	// TwitchAPI is the base URL for the Twitch IGDB API,
 	// used for fetching game metadata.
@@ -76,6 +78,38 @@ type Config struct {
 	AppID uint32 `yaml:"app_id" env:"APP_ID" env-required:"true"`
 }
 
+// UploadsConfig holds filesystem-upload limits and timeouts. Extracted from
+// formerly hardcoded constants so ops can tune per-environment without a
+// rebuild (e.g. raise MaxUploadBytes for admins on a trusted network).
+type UploadsConfig struct {
+	// Path is the filesystem directory where uploaded game images are stored.
+	Path string `yaml:"path" env:"UPLOADS_PATH" env-required:"true"`
+
+	// MaxUploadBytes caps multipart upload size. Requests larger than this
+	// are rejected by r.ParseMultipartForm before allocating the body.
+	MaxUploadBytes int64 `yaml:"max_upload_bytes" env:"UPLOADS_MAX_BYTES" env-default:"10485760"` // 10 MiB
+
+	// DownloadTimeout bounds a single cover-image fetch during IGDB import.
+	// A slow remote shouldn't stall a whole batch; the timeout here plus
+	// IGDB.BatchTimeout together form the ceiling on import wall-clock.
+	DownloadTimeout time.Duration `yaml:"download_timeout" env:"UPLOADS_DOWNLOAD_TIMEOUT" env-default:"5s"`
+}
+
+// IGDBConfig holds batch-import tuning. BatchTimeout must stay below
+// HTTPServer.ShutdownTimeout or graceful shutdown will truncate in-flight
+// batches.
+type IGDBConfig struct {
+	// MaxWorkers bounds outbound IGDB concurrency per batch via errgroup.
+	MaxWorkers int `yaml:"max_workers" env:"IGDB_MAX_WORKERS" env-default:"10"`
+
+	// MaxGamesPerRequest is the hard cap on a single batch size. Enforced
+	// at the service layer before any workers spawn.
+	MaxGamesPerRequest int `yaml:"max_games_per_request" env:"IGDB_MAX_GAMES" env-default:"100"`
+
+	// BatchTimeout bounds total wall-clock for one batch import.
+	BatchTimeout time.Duration `yaml:"batch_timeout" env:"IGDB_BATCH_TIMEOUT" env-default:"30s"`
+}
+
 // Database holds the connection parameters for the MariaDB database.
 // The DSN is assembled from these fields via GetDSN.
 type Database struct {
@@ -99,6 +133,21 @@ type Database struct {
 
 	// Driver is the name of the database driver to use.
 	Driver string `yaml:"driver" env:"DRIVER" env-required:"true"`
+
+	// MaxOpenConns caps the total number of open (in-use + idle) connections
+	// to the database. The Go default is 0 (unlimited), which under load can
+	// open connections faster than MariaDB accepts them. Keep this below the
+	// server-side max_connections minus headroom for other clients.
+	MaxOpenConns int `yaml:"max_open_conns" env:"DB_MAX_OPEN_CONNS" env-default:"25"`
+
+	// MaxIdleConns caps the idle connection pool. Should not exceed
+	// MaxOpenConns; idle connections above this limit are closed eagerly.
+	MaxIdleConns int `yaml:"max_idle_conns" env:"DB_MAX_IDLE_CONNS" env-default:"10"`
+
+	// ConnMaxLifetime forces connections to be recycled after this duration.
+	// Prevents accumulation of stale connections behind load balancers or
+	// across wait_timeout expirations on the MariaDB side.
+	ConnMaxLifetime time.Duration `yaml:"conn_max_lifetime" env:"DB_CONN_MAX_LIFETIME" env-default:"5m"`
 }
 
 // HTTPServer holds the configuration for the application's HTTP server.

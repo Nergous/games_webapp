@@ -79,6 +79,7 @@ func newAuthController(client *mockGRPCAuthClient, uploads *mockUploadsAuth) *au
 		client,
 		uploads,
 		1,
+		0, // use default max upload bytes
 	)
 }
 

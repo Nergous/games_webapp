@@ -3,7 +3,6 @@ package games
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -59,7 +58,7 @@ type MultiGameResponse struct {
 
 func (c *IGDBGamesController) CreateMultiGamesIGDB(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.games.IGDBGamesController.CreateMultiGamesIGDB"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -68,7 +67,7 @@ func (c *IGDBGamesController) CreateMultiGamesIGDB(w http.ResponseWriter, r *htt
 	}
 
 	var request RequestData
-	if err := json.NewDecoder(r.Body).Decode(&request); err != nil {
+	if err := controller.DecodeJSON(w, r, &request); err != nil {
 		controller.WriteError(w, log, g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err))
 		return
 	}

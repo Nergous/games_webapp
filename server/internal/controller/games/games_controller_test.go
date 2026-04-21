@@ -202,7 +202,7 @@ func withAuthAndParam(r *http.Request, userID int, isAdmin bool, paramKey, param
 }
 
 func newController(svc *mockGameService, up *mockUploads) *games.GameController {
-	return games.NewGameController(svc, noopLogger(), up)
+	return games.NewGameController(svc, noopLogger(), up, 0)
 }
 
 func noopLogger() *slog.Logger {
@@ -1328,11 +1328,17 @@ func TestDelete_Forbidden(t *testing.T) {
 	assertStatus(t, w.Code, http.StatusForbidden)
 }
 
-func TestDelete_UploadError(t *testing.T) {
+// TestDelete_UploadCleanupFailureIsBestEffort verifies the delete flow's new
+// ordering: the DB row is removed first, then the image file. If image
+// cleanup fails, the request still succeeds — a stale file on disk is
+// cheaper than a dangling DB row pointing at a missing file, and the caller
+// already got the guarantee that the record is gone.
+func TestDelete_UploadCleanupFailureIsBestEffort(t *testing.T) {
 	svc := &mockGameService{
 		getByID: func(_ context.Context, _ int) (*models.Game, error) {
 			return stubGame(), nil
 		},
+		delete: func(_ context.Context, _ int) error { return nil },
 	}
 	up := &mockUploads{
 		deleteImage: func(_ string) error {
@@ -1345,7 +1351,7 @@ func TestDelete_UploadError(t *testing.T) {
 	w := httptest.NewRecorder()
 	c.Delete(w, r)
 
-	assertStatus(t, w.Code, http.StatusInternalServerError)
+	assertStatus(t, w.Code, http.StatusNoContent)
 }
 
 func TestDelete_ServiceError(t *testing.T) {

@@ -3,7 +3,6 @@ package auth
 
 import (
 	"context"
-	"encoding/json"
 	"log/slog"
 	"net/http"
 	"strconv"
@@ -69,7 +68,7 @@ type UpdateUserRequest struct {
 
 func (c *UserInfoController) GetUserInfo(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.auth.GetUserInfo"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	userID, err := controller.GetUserID(r.Context())
 	if err != nil {
@@ -81,9 +80,7 @@ func (c *UserInfoController) GetUserInfo(w http.ResponseWriter, r *http.Request)
 	var user GetUserInfoResponse
 	user.Email, user.SteamURL, user.Photo, err = c.client.GetUserInfo(r.Context(), uint32(userID))
 	if err != nil {
-		se := g_errors.NewFromGRPC(op, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(g_errors.New(op, g_errors.CodeInternal, "")), http.StatusInternalServerError)
+		controller.WriteError(w, log, g_errors.NewFromGRPC(op, err))
 		return
 	}
 
@@ -92,7 +89,7 @@ func (c *UserInfoController) GetUserInfo(w http.ResponseWriter, r *http.Request)
 
 func (c *UserInfoController) GetUsers(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.auth.GetUsers"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	isAdmin := controller.GetIsAdmin(r.Context())
 	if !isAdmin {
@@ -108,7 +105,9 @@ func (c *UserInfoController) GetUsers(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var users GetUsersResponse
+	users := GetUsersResponse{
+		Users: make([]User, 0, len(resp.Users)),
+	}
 	for _, u := range resp.Users {
 		users.Users = append(users.Users, User{
 			Id:          int(u.Id),
@@ -124,7 +123,7 @@ func (c *UserInfoController) GetUsers(w http.ResponseWriter, r *http.Request) {
 
 func (c *UserInfoController) UpdateUser(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.auth.UpdateUser"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	isAdmin := controller.GetIsAdmin(r.Context())
 	if !isAdmin {
@@ -134,16 +133,14 @@ func (c *UserInfoController) UpdateUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	var user UpdateUserRequest
-	if err := json.NewDecoder(r.Body).Decode(&user); err != nil {
+	if err := controller.DecodeJSON(w, r, &user); err != nil {
 		se := g_errors.Wrap(op, g_errors.CodeInvalidInput, g_errors.InvalidRequestForm, err)
 		controller.WriteError(w, log, se)
 		return
 	}
 
 	if _, err := c.client.UpdateUser(r.Context(), user.Id, user.Email, user.Password, user.SteamURL, user.PathToPhoto); err != nil {
-		se := g_errors.NewFromGRPC(op, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(g_errors.New(op, g_errors.CodeInternal, "")), http.StatusInternalServerError)
+		controller.WriteError(w, log, g_errors.NewFromGRPC(op, err))
 		return
 	}
 
@@ -152,7 +149,7 @@ func (c *UserInfoController) UpdateUser(w http.ResponseWriter, r *http.Request) 
 
 func (c *UserInfoController) DeleteUser(w http.ResponseWriter, r *http.Request) {
 	const op = "controller.auth.DeleteUser"
-	log := c.log.With(slog.String("operation", op))
+	log := controller.HandlerLog(r, c.log, op)
 
 	isAdmin := controller.GetIsAdmin(r.Context())
 	if !isAdmin {
@@ -170,9 +167,7 @@ func (c *UserInfoController) DeleteUser(w http.ResponseWriter, r *http.Request) 
 	}
 
 	if _, err := c.client.DeleteUser(r.Context(), &ssov1.DeleteUserRequest{Id: uint32(idInt)}); err != nil {
-		se := g_errors.NewFromGRPC(op, err)
-		log.Error(se.Details.Op, slog.Any("info", se.Details.Info), slog.Any("err", se.Err))
-		http.Error(w, g_errors.PublicMessage(g_errors.New(op, g_errors.CodeInternal, "")), http.StatusInternalServerError)
+		controller.WriteError(w, log, g_errors.NewFromGRPC(op, err))
 		return
 	}
 
